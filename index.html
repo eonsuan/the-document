@@ -127,7 +127,7 @@
 
 <!-- 데이터연동 -->
 
-왜그랫을까그땐사랑이
+;;
   <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -259,14 +259,6 @@ function renderDocument() {
     for (const [id, doc] of docMap) {
       if (doc.afterId === afterId && !rendered.has(id)) {
         const entry = renderEntry(doc, id);
-        const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
-        if (target && target.nextSibling) {
-          singleEntry.insertBefore(entry, target.nextSibling);
-        } else if (target) {
-          singleEntry.appendChild(entry);
-        } else {
-          singleEntry.insertBefore(entry, singleEntry.firstChild);
-        }
         rendered.add(id);
 
         if (!nicknameSet.has(doc.name)) {
