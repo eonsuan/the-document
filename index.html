@@ -127,7 +127,8 @@
 
 <!-- 데이터연동 -->
 
-<script type="module">
+왜그랫을까그땐사랑이
+  <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -164,8 +165,7 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-let isInitialLoad = true;
-
+let tempEntryQueue = []; // 임시 반영용
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
@@ -216,16 +216,16 @@ submitButton.addEventListener("click", async () => {
   selectedInsertTargetId = null;
 
   const saveEntry = async (imageData = "") => {
-    await addDoc(entries, {
+    const newDoc = {
       name,
       message,
       imageData,
       afterId: afterId || null,
       timestamp: Date.now()
-    });
-    nameInput.value = "";
-    messageInput.value = "";
-    imageInput.value = "";
+    };
+    const docRef = await addDoc(entries, newDoc);
+    tempEntryQueue.push({ ...newDoc, id: docRef.id });
+    renderDocument();
   };
 
   if (file) {
@@ -238,18 +238,19 @@ submitButton.addEventListener("click", async () => {
 });
 
 const q = query(entries, orderBy("timestamp"));
-
 onSnapshot(q, (snapshot) => {
-  if (!isInitialLoad) return;
-  isInitialLoad = false;
+  tempEntryQueue = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  renderDocument();
+});
 
+function renderDocument() {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
 
   const docMap = new Map();
-  snapshot.forEach(doc => {
-    docMap.set(doc.id, { ...doc.data(), id: doc.id });
+  tempEntryQueue.forEach(doc => {
+    docMap.set(doc.id, doc);
   });
 
   const rendered = new Set();
@@ -282,12 +283,7 @@ onSnapshot(q, (snapshot) => {
 
   renderRecursive(null);
   extractKeywords();
-
-  if (!keywordIntervalStarted) {
-    keywordIntervalStarted = true;
-    setInterval(extractKeywords, 10000);
-  }
-});
+}
 
 function extractKeywords() {
   const text = singleEntry.textContent;
