@@ -213,12 +213,12 @@ function renderEntry(data) {
     entryWrapper.appendChild(textSpan);
   }
 
-  if (data.imageUrl) {
-    const img = document.createElement("img");
-    img.src = data.imageUrl;
-    img.className = "inline-img";
-    entryWrapper.appendChild(img);
-  }
+if (data.imageData) {
+  const img = document.createElement("img");
+  img.src = data.imageData; // base64 string 사용
+  img.className = "inline-img";
+  entryWrapper.appendChild(img);
+}
 
   entryWrapper.appendChild(insertBtn);
   singleEntry.appendChild(entryWrapper);
@@ -238,30 +238,43 @@ submitButton.addEventListener("click", async () => {
 
   if (!name || (!message && !file)) return;
 
-  let imageUrl = "";
+  let imageData = "";
 
   try {
     if (file) {
-      const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      imageUrl = await getDownloadURL(snapshot.ref);
-      console.log("✅ 이미지 업로드 성공:", imageUrl);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        imageData = reader.result; // base64 string
+
+        await addDoc(entries, {
+          name,
+          message,
+          imageData,
+          timestamp: Date.now()
+        });
+
+        console.log("✅ Firestore에 base64 이미지 저장 성공");
+
+        nameInput.value = "";
+        messageInput.value = "";
+        imageInput.value = "";
+      };
+      reader.readAsDataURL(file);
+    } else {
+      await addDoc(entries, {
+        name,
+        message,
+        imageData: "",
+        timestamp: Date.now()
+      });
+      console.log("✅ 텍스트만 저장 완료");
+
+      nameInput.value = "";
+      messageInput.value = "";
+      imageInput.value = "";
     }
-
-    await addDoc(entries, {
-      name,
-      message,
-      imageUrl, // ← 이 부분 중요!
-      timestamp: Date.now()
-    });
-    console.log("✅ Firestore 저장 성공");
-
-    // 입력창 초기화
-    nameInput.value = "";
-    messageInput.value = "";
-    imageInput.value = "";
   } catch (error) {
-    console.error("🚨 오류 발생:", error);
+    console.error("🚨 Firestore 저장 중 오류:", error);
   }
 });
 
