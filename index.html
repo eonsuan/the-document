@@ -136,7 +136,8 @@ import {
   addDoc,
   onSnapshot,
   query,
-  orderBy
+  orderBy,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -164,38 +165,49 @@ const keywordBox = document.getElementById("keyword-box");
 
 let selectedInsertTarget = null;
 let keywordIntervalStarted = false;
-
-const singleEntry = document.createElement("span");
+const nicknameSet = new Set();
+const entryMap = new Map();
+let singleEntry = document.createElement("span");
 singleEntry.className = "entry";
-singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
-const nicknameSet = new Set();
-const nicknameList = document.createElement("div");
-nicknameList.style.padding = "10px";
-nicknameList.style.margin = "0";
-nicknameList.style.listStyle = "none";
-nicknameList.style.fontSize = "1.1rem";
-nicknameList.style.display = "flex";
-nicknameList.style.flexDirection = "column";
-communityContainer.innerHTML = "";
-communityContainer.appendChild(nicknameList);
+function renderAll(entriesList) {
+  singleEntry.innerHTML = "";
+  entryMap.clear();
+
+  // ID => data map 만들기
+  entriesList.forEach(doc => {
+    const data = doc.data();
+    data.id = doc.id;
+    entryMap.set(doc.id, data);
+  });
+
+  const rendered = new Set();
+  function renderRecursive(afterId) {
+    entryMap.forEach(data => {
+      if ((data.afterId || "") === afterId && !rendered.has(data.id)) {
+        renderEntry(data);
+        rendered.add(data.id);
+        renderRecursive(data.id);
+      }
+    });
+  }
+  renderRecursive("");
+}
 
 function renderEntry(data) {
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = data.name;
+  entryWrapper.dataset.id = data.id;
 
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
   insertBtn.addEventListener("click", () => {
-    if (selectedInsertTarget) {
-      selectedInsertTarget.classList.remove("insert-target");
-    }
+    if (selectedInsertTarget) selectedInsertTarget.classList.remove("insert-target");
     selectedInsertTarget = entryWrapper;
     entryWrapper.classList.add("insert-target");
-    nameInput.focus();
   });
 
   if (data.message) {
@@ -219,7 +231,7 @@ function renderEntry(data) {
     nicknameSet.add(data.name);
     const div = document.createElement("div");
     div.textContent = data.name;
-    nicknameList.appendChild(div);
+    communityContainer.appendChild(div);
   }
 }
 
@@ -227,37 +239,36 @@ submitButton.addEventListener("click", async () => {
   const name = nameInput.value.trim();
   const message = messageInput.value.trim();
   const file = imageInput.files[0];
-
   if (!name || (!message && !file)) return;
 
+  const afterId = selectedInsertTarget?.dataset.id || "";
   let imageData = "";
+
+  const storeDoc = async () => {
+    await addDoc(entries, {
+      name,
+      message,
+      imageData,
+      afterId,
+      timestamp: Date.now()
+    });
+    nameInput.value = "";
+    messageInput.value = "";
+    imageInput.value = "";
+    selectedInsertTarget?.classList.remove("insert-target");
+    selectedInsertTarget = null;
+  };
 
   try {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = async () => {
         imageData = reader.result;
-        const newEntry = await addDoc(entries, {
-          name,
-          message,
-          imageData,
-          timestamp: Date.now()
-        });
-        nameInput.value = "";
-        messageInput.value = "";
-        imageInput.value = "";
+        await storeDoc();
       };
       reader.readAsDataURL(file);
     } else {
-      await addDoc(entries, {
-        name,
-        message,
-        imageData: "",
-        timestamp: Date.now()
-      });
-      nameInput.value = "";
-      messageInput.value = "";
-      imageInput.value = "";
+      await storeDoc();
     }
   } catch (error) {
     console.error("🚨 Firestore 저장 중 오류:", error);
@@ -266,11 +277,89 @@ submitButton.addEventListener("click", async () => {
 
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
-  singleEntry.innerHTML = "";
-  snapshot.forEach(doc => renderEntry(doc.data()));
-});
-</script>
+  const docs = snapshot.docs;
+  renderAll(docs);
+  extractKeywords();
 
+  if (!keywordIntervalStarted) {
+    keywordIntervalStarted = true;
+    setInterval(extractKeywords, 10000);
+  }
+});
+
+function extractKeywords() {
+  const text = singleEntry.textContent;
+  const words = text.match(/\w+|[가-힣]{2,}/g) || [];
+  const stopwords = ["그리고", "하지만", "있다", "입니다", "있는", "하는", "그", "이", "저", "것", "에서"];
+  const filtered = words.filter(w => !stopwords.includes(w));
+  if (filtered.length === 0) {
+    animateKeyword("");
+    clearHighlights();
+    return;
+  }
+  const shuffled = filtered.sort(() => 0.5 - Math.random());
+  const sample = shuffled.slice(0, 3);
+  animateKeyword(sample.join(" "));
+  highlightKeywords(sample);
+}
+
+function highlightKeywords(keywords) {
+  clearHighlights();
+  const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
+  const nodesToReplace = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const parent = node.parentNode;
+    if (parent.nodeName === "MARK") continue;
+    let replaced = node.textContent;
+    let matched = false;
+    keywords.forEach(word => {
+      const regex = new RegExp(`(${word})`, "g");
+      if (regex.test(replaced)) {
+        matched = true;
+        replaced = replaced.replace(regex, `<mark class=\"keyword-highlight\">$1</mark>`);
+      }
+    });
+    if (matched) {
+      const span = document.createElement("span");
+      span.innerHTML = replaced;
+      nodesToReplace.push({ oldNode: node, newNode: span });
+    }
+  }
+  nodesToReplace.forEach(({ oldNode, newNode }) => {
+    oldNode.parentNode.replaceChild(newNode, oldNode);
+  });
+}
+
+function clearHighlights() {
+  document.querySelectorAll(".keyword-highlight").forEach(el => {
+    el.outerHTML = el.innerText;
+  });
+}
+
+function animateKeyword(text) {
+  keywordBox.innerHTML = "";
+  if (!text.trim()) {
+    keywordBox.textContent = " ";
+    return;
+  }
+  const words = text.split(" ");
+  words.forEach((word, i) => {
+    [...word].forEach(char => {
+      const span = document.createElement("span");
+      span.className = "floating-char";
+      span.textContent = char;
+      span.style.animationDelay = `${Math.random()}s`;
+      keywordBox.appendChild(span);
+    });
+    if (i < words.length - 1) {
+      const spacer = document.createElement("span");
+      spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
+      keywordBox.appendChild(spacer);
+    }
+  });
+}
+</script>
 
 </body>
 </html>
