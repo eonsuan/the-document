@@ -129,120 +129,46 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
-import {
-  getFirestore, collection, addDoc, onSnapshot, query, orderBy
-} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
-import {
-  getStorage, ref, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
 
+// Firebase 설정
 const firebaseConfig = {
   apiKey: "AIzaSyBdv0FHFtBHUL9VWDRtvU1FXN8rAVwYgjo",
   authDomain: "the-document-94955.firebaseapp.com",
   projectId: "the-document-94955",
   storageBucket: "the-document-94955.appspot.com",
   messagingSenderId: "502838993401",
-  appId: "1:502838993401:web:169c018782a315b05a5d28",
-  measurementId: "G-H8CMBQBWXD"
+  appId: "1:502838993401:web:169c018782a315b05a5d28"
 };
 
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-
 const entries = collection(db, "doc");
-const documentDiv = document.getElementById("document");
-const keywordBox = document.getElementById("keyword-box");
 
-const singleEntry = document.createElement("span");
-singleEntry.className = "entry";
-singleEntry.dataset.nickname = "shared";
-documentDiv.innerHTML = "";
-documentDiv.appendChild(singleEntry);
+const submitButton = document.getElementById("submit-entry");
+const nameInput = document.getElementById("name-input");
+const messageInput = document.getElementById("message-input");
+const imageInput = document.getElementById("image-input");
+const documentDiv = document.getElementById("document");
 
 let selectedInsertTarget = null;
-let nicknameSet = new Set();
-const nicknameList = document.createElement("div");
-document.getElementById("community-list-container").appendChild(nicknameList);
 
-// 키워드 업데이트
-function updateKeywords() {
-  const text = singleEntry.textContent;
-  const words = text.match(/[\w가-힣]{2,}/g) || [];
-  const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
-  const filtered = words.filter(w => !stopwords.includes(w));
-  const shuffled = filtered.sort(() => 0.5 - Math.random());
-  const sample = shuffled.slice(0, 3);
-  displayKeywords(sample);
-  highlightKeywords(sample);
+// 고유 ID 생성기
+function generateUUID() {
+  return crypto.randomUUID();
 }
 
-function displayKeywords(words) {
-  keywordBox.innerHTML = "";
-  words.forEach((word, i) => {
-    [...word].forEach(char => {
-      const span = document.createElement("span");
-      span.className = "floating-char";
-      span.textContent = char;
-      span.style.animationDelay = `${Math.random()}s`;
-      keywordBox.appendChild(span);
-    });
-    if (i < words.length - 1) {
-      const spacer = document.createElement("span");
-      spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
-      keywordBox.appendChild(spacer);
-    }
-  });
-}
-
-function highlightKeywords(keywords) {
-  document.querySelectorAll(".keyword-highlight").forEach(el => {
-    el.outerHTML = el.innerText;
-  });
-
-  const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
-  const nodesToReplace = [];
-
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    const parent = node.parentNode;
-    if (parent.nodeName === "MARK") continue;
-
-    let replaced = node.textContent;
-    let matched = false;
-
-    keywords.forEach(word => {
-      const regex = new RegExp(`(${word})`, "g");
-      if (regex.test(replaced)) {
-        matched = true;
-        replaced = replaced.replace(regex, `<mark class="keyword-highlight">$1</mark>`);
-      }
-    });
-
-    if (matched) {
-      const span = document.createElement("span");
-      span.innerHTML = replaced;
-      nodesToReplace.push({ oldNode: node, newNode: span });
-    }
-  }
-
-  nodesToReplace.forEach(({ oldNode, newNode }) => {
-    oldNode.parentNode.replaceChild(newNode, oldNode);
-  });
-}
-
-// renderEntry
+// 데이터 렌더링
 function renderEntry(data) {
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
-  entryWrapper.dataset.nickname = data.name;
+  entryWrapper.dataset.id = data.id;
 
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
-
   insertBtn.addEventListener("click", () => {
     if (selectedInsertTarget) selectedInsertTarget.classList.remove("insert-target");
     selectedInsertTarget = entryWrapper;
@@ -265,26 +191,21 @@ function renderEntry(data) {
 
   entryWrapper.appendChild(insertBtn);
 
-  if (selectedInsertTarget && selectedInsertTarget.parentNode === singleEntry) {
-    singleEntry.insertBefore(entryWrapper, selectedInsertTarget.nextSibling);
-  } else {
-    singleEntry.appendChild(entryWrapper);
+  if (data.afterId) {
+    const target = document.querySelector(`[data-id='${data.afterId}']`);
+    if (target) {
+      documentDiv.insertBefore(entryWrapper, target.nextSibling);
+      return;
+    }
   }
-
-  if (!nicknameSet.has(data.name)) {
-    nicknameSet.add(data.name);
-    const div = document.createElement("div");
-    div.textContent = data.name;
-    nicknameList.appendChild(div);
-  }
+  documentDiv.appendChild(entryWrapper);
 }
 
-// form submit
-document.getElementById("submit-entry").addEventListener("click", async () => {
-  const name = document.getElementById("name-input").value.trim();
-  const message = document.getElementById("message-input").value.trim();
-  const file = document.getElementById("image-input").files[0];
-
+// 제출
+submitButton.addEventListener("click", async () => {
+  const name = nameInput.value.trim();
+  const message = messageInput.value.trim();
+  const file = imageInput.files[0];
   if (!name || (!message && !file)) return;
 
   let imageUrl = "";
@@ -294,27 +215,47 @@ document.getElementById("submit-entry").addEventListener("click", async () => {
     imageUrl = await getDownloadURL(snapshot.ref);
   }
 
+  const newId = generateUUID();
+  const afterId = selectedInsertTarget ? selectedInsertTarget.dataset.id : null;
+
   await addDoc(entries, {
+    id: newId,
     name,
     message,
     imageUrl,
+    afterId,
     timestamp: Date.now()
   });
 
-  document.getElementById("name-input").value = "";
-  document.getElementById("message-input").value = "";
-  document.getElementById("image-input").value = "";
+  nameInput.value = "";
+  messageInput.value = "";
+  imageInput.value = "";
+  selectedInsertTarget = null;
 });
 
-// listen and render
+// 전체 데이터 불러오기
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
-  singleEntry.innerHTML = "";
-  snapshot.forEach(doc => renderEntry(doc.data()));
-  updateKeywords();
+  documentDiv.innerHTML = "";
+  const docs = [];
+  snapshot.forEach(doc => docs.push(doc.data()));
+
+  const rendered = new Set();
+  const renderNext = () => {
+    const remaining = docs.filter(d => !rendered.has(d.id));
+    if (remaining.length === 0) return;
+
+    for (const doc of remaining) {
+      if (!doc.afterId || rendered.has(doc.afterId)) {
+        renderEntry(doc);
+        rendered.add(doc.id);
+      }
+    }
+    setTimeout(renderNext, 20);
+  };
+  renderNext();
 });
 </script>
-
 
 </body>
 </html>
