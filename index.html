@@ -127,7 +127,8 @@
 
 <!-- 데이터연동 -->
 
-// Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
+마지막
+  
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -174,8 +175,7 @@ documentDiv.appendChild(singleEntry);
 const nicknameSet = new Set();
 
 function renderEntry(docData, docId) {
-  const existing = singleEntry.querySelector(`[data-id='${docId}']`);
-  if (existing) return existing; // Prevent duplication
+  if (singleEntry.querySelector(`[data-id='${docId}']`)) return; // 중복 방지 모든 항목에 적용
 
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
@@ -365,5 +365,6 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 </body>
 </html>
