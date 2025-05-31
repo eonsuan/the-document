@@ -127,132 +127,193 @@
 
 <!-- 데이터연동 -->
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot, query, orderBy
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+import {
+  getStorage, ref, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBdv0FHFtBHUL9VWDRtvU1FXN8rAVwYgjo",
-      authDomain: "the-document-94955.firebaseapp.com",
-      projectId: "the-document-94955",
-      storageBucket: "the-document-94955.appspot.com",
-      messagingSenderId: "502838993401",
-      appId: "1:502838993401:web:169c018782a315b05a5d28",
-      measurementId: "G-H8CMBQBWXD"
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyBdv0FHFtBHUL9VWDRtvU1FXN8rAVwYgjo",
+  authDomain: "the-document-94955.firebaseapp.com",
+  projectId: "the-document-94955",
+  storageBucket: "the-document-94955.appspot.com",
+  messagingSenderId: "502838993401",
+  appId: "1:502838993401:web:169c018782a315b05a5d28",
+  measurementId: "G-H8CMBQBWXD"
+};
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const storage = getStorage(app);
-    const entries = collection(db, "doc");
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
-    const documentDiv = document.getElementById("document");
-    const submitButton = document.getElementById("submit-entry");
-    const nameInput = document.getElementById("name-input");
-    const messageInput = document.getElementById("message-input");
-    const imageInput = document.getElementById("image-input");
-    const keywordBox = document.getElementById("keyword-box");
+const entries = collection(db, "doc");
+const documentDiv = document.getElementById("document");
+const keywordBox = document.getElementById("keyword-box");
 
-    let selectedInsertTargetId = null;
+const singleEntry = document.createElement("span");
+singleEntry.className = "entry";
+singleEntry.dataset.nickname = "shared";
+documentDiv.innerHTML = "";
+documentDiv.appendChild(singleEntry);
 
-    function createEntryElement(data) {
-      const entry = document.createElement("span");
-      entry.className = "entry";
-      entry.dataset.id = data.id;
+let selectedInsertTarget = null;
+let nicknameSet = new Set();
+const nicknameList = document.createElement("div");
+document.getElementById("community-list-container").appendChild(nicknameList);
 
-      const insertBtn = document.createElement("button");
-      insertBtn.textContent = "+";
-      insertBtn.className = "insert-button";
-      insertBtn.addEventListener("click", () => {
-        selectedInsertTargetId = data.id;
-      });
+// 키워드 업데이트
+function updateKeywords() {
+  const text = singleEntry.textContent;
+  const words = text.match(/[\w가-힣]{2,}/g) || [];
+  const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
+  const filtered = words.filter(w => !stopwords.includes(w));
+  const shuffled = filtered.sort(() => 0.5 - Math.random());
+  const sample = shuffled.slice(0, 3);
+  displayKeywords(sample);
+  highlightKeywords(sample);
+}
 
-      if (data.message) {
-        const textSpan = document.createElement("span");
-        textSpan.className = "entry-text";
-        textSpan.textContent = data.message + " ";
-        entry.appendChild(textSpan);
-      }
-      if (data.imageUrl) {
-        const img = document.createElement("img");
-        img.src = data.imageUrl;
-        img.className = "inline-img";
-        entry.appendChild(img);
-      }
-
-      entry.appendChild(insertBtn);
-      return entry;
+function displayKeywords(words) {
+  keywordBox.innerHTML = "";
+  words.forEach((word, i) => {
+    [...word].forEach(char => {
+      const span = document.createElement("span");
+      span.className = "floating-char";
+      span.textContent = char;
+      span.style.animationDelay = `${Math.random()}s`;
+      keywordBox.appendChild(span);
+    });
+    if (i < words.length - 1) {
+      const spacer = document.createElement("span");
+      spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
+      keywordBox.appendChild(spacer);
     }
+  });
+}
 
-    async function handleSubmit() {
-      const name = nameInput.value.trim();
-      const message = messageInput.value.trim();
-      const file = imageInput.files[0];
-      if (!name || (!message && !file)) return;
+function highlightKeywords(keywords) {
+  document.querySelectorAll(".keyword-highlight").forEach(el => {
+    el.outerHTML = el.innerText;
+  });
 
-      let imageUrl = "";
-      if (file) {
-        const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(storageRef, file);
-        imageUrl = await getDownloadURL(snapshot.ref);
+  const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
+  const nodesToReplace = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const parent = node.parentNode;
+    if (parent.nodeName === "MARK") continue;
+
+    let replaced = node.textContent;
+    let matched = false;
+
+    keywords.forEach(word => {
+      const regex = new RegExp(`(${word})`, "g");
+      if (regex.test(replaced)) {
+        matched = true;
+        replaced = replaced.replace(regex, `<mark class="keyword-highlight">$1</mark>`);
       }
-
-      const newEntry = {
-        name,
-        message,
-        imageUrl,
-        timestamp: Date.now(),
-        insertAfter: selectedInsertTargetId || null
-      };
-
-      await addDoc(entries, newEntry);
-
-      nameInput.value = "";
-      messageInput.value = "";
-      imageInput.value = "";
-      selectedInsertTargetId = null;
-    }
-
-    function renderEntries(sortedEntries) {
-      documentDiv.innerHTML = "";
-      const idToEntry = {};
-      sortedEntries.forEach(data => {
-        const entryEl = createEntryElement(data);
-        idToEntry[data.id] = entryEl;
-      });
-      sortedEntries.forEach(data => {
-        const entryEl = idToEntry[data.id];
-        if (data.insertAfter && idToEntry[data.insertAfter]) {
-          const parent = idToEntry[data.insertAfter].parentNode;
-          parent.insertBefore(entryEl, idToEntry[data.insertAfter].nextSibling);
-        } else {
-          documentDiv.appendChild(entryEl);
-        }
-      });
-    }
-
-    submitButton.addEventListener("click", handleSubmit);
-
-    const q = query(entries, orderBy("timestamp"));
-    onSnapshot(q, (snapshot) => {
-      const entriesData = [];
-      snapshot.forEach(doc => {
-        entriesData.push({ id: doc.id, ...doc.data() });
-      });
-      renderEntries(entriesData);
-      updateKeywords();
     });
 
-    function updateKeywords() {
-      const text = documentDiv.textContent;
-      const words = text.match(/\w{2,}/g) || [];
-      const stopwords = ["그리고", "하지만", "있다", "입니다"];
-      const filtered = words.filter(w => !stopwords.includes(w));
-      const sample = filtered.sort(() => 0.5 - Math.random()).slice(0, 3);
-      keywordBox.innerHTML = sample.map(w => `<mark>${w}</mark>`).join("&nbsp;&nbsp;&nbsp;");
+    if (matched) {
+      const span = document.createElement("span");
+      span.innerHTML = replaced;
+      nodesToReplace.push({ oldNode: node, newNode: span });
     }
-  </script>
+  }
+
+  nodesToReplace.forEach(({ oldNode, newNode }) => {
+    oldNode.parentNode.replaceChild(newNode, oldNode);
+  });
+}
+
+// renderEntry
+function renderEntry(data) {
+  const entryWrapper = document.createElement("span");
+  entryWrapper.className = "entry";
+  entryWrapper.dataset.nickname = data.name;
+
+  const insertBtn = document.createElement("button");
+  insertBtn.textContent = "+";
+  insertBtn.className = "insert-button";
+
+  insertBtn.addEventListener("click", () => {
+    if (selectedInsertTarget) selectedInsertTarget.classList.remove("insert-target");
+    selectedInsertTarget = entryWrapper;
+    entryWrapper.classList.add("insert-target");
+  });
+
+  if (data.message) {
+    const textSpan = document.createElement("span");
+    textSpan.className = "entry-text";
+    textSpan.textContent = data.message + " ";
+    entryWrapper.appendChild(textSpan);
+  }
+
+  if (data.imageUrl) {
+    const img = document.createElement("img");
+    img.src = data.imageUrl;
+    img.className = "inline-img";
+    entryWrapper.appendChild(img);
+  }
+
+  entryWrapper.appendChild(insertBtn);
+
+  if (selectedInsertTarget && selectedInsertTarget.parentNode === singleEntry) {
+    singleEntry.insertBefore(entryWrapper, selectedInsertTarget.nextSibling);
+  } else {
+    singleEntry.appendChild(entryWrapper);
+  }
+
+  if (!nicknameSet.has(data.name)) {
+    nicknameSet.add(data.name);
+    const div = document.createElement("div");
+    div.textContent = data.name;
+    nicknameList.appendChild(div);
+  }
+}
+
+// form submit
+document.getElementById("submit-entry").addEventListener("click", async () => {
+  const name = document.getElementById("name-input").value.trim();
+  const message = document.getElementById("message-input").value.trim();
+  const file = document.getElementById("image-input").files[0];
+
+  if (!name || (!message && !file)) return;
+
+  let imageUrl = "";
+  if (file) {
+    const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+    const snapshot = await uploadBytes(storageRef, file);
+    imageUrl = await getDownloadURL(snapshot.ref);
+  }
+
+  await addDoc(entries, {
+    name,
+    message,
+    imageUrl,
+    timestamp: Date.now()
+  });
+
+  document.getElementById("name-input").value = "";
+  document.getElementById("message-input").value = "";
+  document.getElementById("image-input").value = "";
+});
+
+// listen and render
+const q = query(entries, orderBy("timestamp"));
+onSnapshot(q, (snapshot) => {
+  singleEntry.innerHTML = "";
+  snapshot.forEach(doc => renderEntry(doc.data()));
+  updateKeywords();
+});
+</script>
 
 </body>
 </html>
