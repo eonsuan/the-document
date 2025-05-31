@@ -127,11 +127,9 @@
 
 <!-- 데이터연동 -->
 
-ㅈㅂ
+ㅇ..
 
-  // ✅ 통합 완성 코드: 중복 방지 + 실시간 위치 반영 + 이미지 + 멤버 + 키워드 유지
-
-<script type="module">
+  <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -168,14 +166,19 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-const nicknameSet = new Set();
+let currentRenderedIds = new Set();
 
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
+const nicknameSet = new Set();
+
 function renderEntry(docData, docId) {
+  if (currentRenderedIds.has(docId)) return null;
+  currentRenderedIds.add(docId);
+
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = docData.name;
@@ -217,17 +220,17 @@ submitButton.addEventListener("click", async () => {
   const afterId = selectedInsertTargetId;
   selectedInsertTargetId = null;
 
+  const entryData = {
+    name,
+    message,
+    imageData: "",
+    afterId: afterId || null,
+    timestamp: Date.now()
+  };
+
   const saveEntry = async (imageData = "") => {
-    await addDoc(entries, {
-      name,
-      message,
-      imageData,
-      afterId: afterId || null,
-      timestamp: Date.now()
-    });
-    nameInput.value = "";
-    messageInput.value = "";
-    imageInput.value = "";
+    entryData.imageData = imageData;
+    await addDoc(entries, entryData);
   };
 
   if (file) {
@@ -237,6 +240,10 @@ submitButton.addEventListener("click", async () => {
   } else {
     await saveEntry();
   }
+
+  nameInput.value = "";
+  messageInput.value = "";
+  imageInput.value = "";
 });
 
 const q = query(entries, orderBy("timestamp"));
@@ -244,6 +251,7 @@ onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
+  currentRenderedIds.clear();
 
   const docMap = new Map();
   snapshot.forEach(doc => {
@@ -253,9 +261,10 @@ onSnapshot(q, (snapshot) => {
   const rendered = new Set();
 
   const renderRecursive = (afterId) => {
-    for (const [id, doc] of docMap.entries()) {
+    for (const [id, doc] of docMap) {
       if (doc.afterId === afterId && !rendered.has(id)) {
         const entry = renderEntry(doc, id);
+        if (!entry) continue;
         const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
         if (target && target.nextSibling) {
           singleEntry.insertBefore(entry, target.nextSibling);
@@ -362,6 +371,7 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 
 </body>
 </html>
