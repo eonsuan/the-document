@@ -138,12 +138,6 @@ import {
   query,
   orderBy
 } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
-import {
-  getStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBdv0FHFtBHUL9VWDRtvU1FXN8rAVwYgjo",
@@ -157,9 +151,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
-
 const db = getFirestore(app);
-const storage = getStorage(app);
 const entries = collection(db, "doc");
 
 const submitButton = document.getElementById("submit-entry");
@@ -197,13 +189,13 @@ function renderEntry(data) {
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
-
   insertBtn.addEventListener("click", () => {
     if (selectedInsertTarget) {
       selectedInsertTarget.classList.remove("insert-target");
     }
     selectedInsertTarget = entryWrapper;
     entryWrapper.classList.add("insert-target");
+    nameInput.focus();
   });
 
   if (data.message) {
@@ -213,12 +205,12 @@ function renderEntry(data) {
     entryWrapper.appendChild(textSpan);
   }
 
-if (data.imageData) {
-  const img = document.createElement("img");
-  img.src = data.imageData; // base64 string 사용
-  img.className = "inline-img";
-  entryWrapper.appendChild(img);
-}
+  if (data.imageData) {
+    const img = document.createElement("img");
+    img.src = data.imageData;
+    img.className = "inline-img";
+    entryWrapper.appendChild(img);
+  }
 
   entryWrapper.appendChild(insertBtn);
   singleEntry.appendChild(entryWrapper);
@@ -244,17 +236,13 @@ submitButton.addEventListener("click", async () => {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        imageData = reader.result; // base64 string
-
-        await addDoc(entries, {
+        imageData = reader.result;
+        const newEntry = await addDoc(entries, {
           name,
           message,
           imageData,
           timestamp: Date.now()
         });
-
-        console.log("✅ Firestore에 base64 이미지 저장 성공");
-
         nameInput.value = "";
         messageInput.value = "";
         imageInput.value = "";
@@ -267,8 +255,6 @@ submitButton.addEventListener("click", async () => {
         imageData: "",
         timestamp: Date.now()
       });
-      console.log("✅ 텍스트만 저장 완료");
-
       nameInput.value = "";
       messageInput.value = "";
       imageInput.value = "";
@@ -282,96 +268,9 @@ const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
   snapshot.forEach(doc => renderEntry(doc.data()));
-  extractKeywords();
-
-  if (!keywordIntervalStarted) {
-    keywordIntervalStarted = true;
-    setInterval(extractKeywords, 10000);
-  }
 });
-
-function extractKeywords() {
-  const text = singleEntry.textContent;
-  const words = text.match(/\w+|[가-힣]{2,}/g) || [];
-  const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
-  const filtered = words.filter(w => !stopwords.includes(w));
-
-  if (filtered.length === 0) {
-    animateKeyword("");
-    clearHighlights();
-    return;
-  }
-
-  const shuffled = filtered.sort(() => 0.5 - Math.random());
-  const sample = shuffled.slice(0, 3);
-  animateKeyword(sample.join(" "));
-  highlightKeywords(sample);
-}
-
-function highlightKeywords(keywords) {
-  clearHighlights();
-  const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
-  const nodesToReplace = [];
-
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    const parent = node.parentNode;
-    if (parent.nodeName === "MARK") continue;
-
-    let replaced = node.textContent;
-    let matched = false;
-
-    keywords.forEach(word => {
-      const regex = new RegExp(`(${word})`, "g");
-      if (regex.test(replaced)) {
-        matched = true;
-        replaced = replaced.replace(regex, `<mark class=\"keyword-highlight\">$1</mark>`);
-      }
-    });
-
-    if (matched) {
-      const span = document.createElement("span");
-      span.innerHTML = replaced;
-      nodesToReplace.push({ oldNode: node, newNode: span });
-    }
-  }
-
-  nodesToReplace.forEach(({ oldNode, newNode }) => {
-    oldNode.parentNode.replaceChild(newNode, oldNode);
-  });
-}
-
-function clearHighlights() {
-  document.querySelectorAll(".keyword-highlight").forEach(el => {
-    el.outerHTML = el.innerText;
-  });
-}
-
-function animateKeyword(text) {
-  keywordBox.innerHTML = "";
-  if (!text.trim()) {
-    keywordBox.textContent = " ";
-    return;
-  }
-
-  const words = text.split(" ");
-  words.forEach((word, i) => {
-    [...word].forEach(char => {
-      const span = document.createElement("span");
-      span.className = "floating-char";
-      span.textContent = char;
-      span.style.animationDelay = `${Math.random()}s`;
-      keywordBox.appendChild(span);
-    });
-
-    if (i < words.length - 1) {
-      const spacer = document.createElement("span");
-      spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
-      keywordBox.appendChild(spacer);
-    }
-  });
-}
 </script>
+
 
 </body>
 </html>
