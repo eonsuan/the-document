@@ -245,23 +245,25 @@ submitButton.addEventListener("click", async () => {
       const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
       const snapshot = await uploadBytes(storageRef, file);
       imageUrl = await getDownloadURL(snapshot.ref);
-      console.log("✅ 이미지 업로드 성공:", imageUrl);
+      console.log("이미지 업로드 성공:", imageUrl);
+    } else {
+      console.log("이미지 없음. 텍스트만 저장");
     }
 
     await addDoc(entries, {
       name,
       message,
-      imageUrl, // ← 이 부분 중요!
+      imageUrl,
       timestamp: Date.now()
     });
-    console.log("✅ Firestore 저장 성공");
+    console.log("Firestore 저장 성공");
 
     // 입력창 초기화
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
   } catch (error) {
-    console.error("🚨 오류 발생:", error);
+    console.error("오류 발생:", error);
   }
 });
 
