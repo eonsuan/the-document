@@ -127,7 +127,7 @@
 
 <!-- 데이터연동 -->
 
-// Firebase 모듈 기반 문단 삽입 위치 지정 및 중복 방지 최종 스크립트
+// poppop
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -166,6 +166,7 @@ const communityContainer = document.getElementById("community-list-container");
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
 const nicknameSet = new Set();
+
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
@@ -202,6 +203,8 @@ function renderEntry(docData, docId) {
   }
 
   entryWrapper.appendChild(insertBtn);
+  entryWrapper.dataset.timestamp = docData.timestamp;
+  entryWrapper.dataset.afterId = docData.afterId || "";
 
   const target = [...singleEntry.children].find(child => child.dataset.id === docData.afterId);
   if (target && target.nextSibling) {
@@ -225,38 +228,51 @@ submitButton.addEventListener("click", async () => {
   if (!name || (!message && !file)) return;
 
   const afterId = selectedInsertTargetId;
-  selectedInsertTargetId = null;
-
-  const saveEntry = async (imageData = "") => {
-    await addDoc(entries, {
-      name,
-      message,
-      imageData,
-      afterId: afterId || null,
-      timestamp: Date.now()
-    });
-    nameInput.value = "";
-    messageInput.value = "";
-    imageInput.value = "";
-  };
 
   if (file) {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      saveEntry(reader.result);
+    reader.onloadend = async () => {
+      const imageData = reader.result;
+      await addDoc(entries, {
+        name,
+        message,
+        imageData,
+        afterId: afterId || null,
+        timestamp: Date.now()
+      });
+
+      selectedInsertTargetId = null;
+      nameInput.value = "";
+      messageInput.value = "";
+      imageInput.value = "";
     };
     reader.readAsDataURL(file);
   } else {
-    await saveEntry();
+    await addDoc(entries, {
+      name,
+      message,
+      imageData: "",
+      afterId: afterId || null,
+      timestamp: Date.now()
+    });
+
+    selectedInsertTargetId = null;
+    nameInput.value = "";
+    messageInput.value = "";
+    imageInput.value = "";
   }
 });
 
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
+  communityContainer.innerHTML = "";
+  nicknameSet.clear();
+
   const docMap = new Map();
   snapshot.forEach(doc => {
-    docMap.set(doc.id, { data: doc.data(), id: doc.id });
+    const data = doc.data();
+    docMap.set(doc.id, { data, id: doc.id });
   });
 
   const rendered = new Set();
@@ -283,11 +299,13 @@ function extractKeywords() {
   const words = text.match(/\w+|[가-힣]{2,}/g) || [];
   const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
   const filtered = words.filter(w => !stopwords.includes(w));
+
   if (filtered.length === 0) {
     animateKeyword("");
     clearHighlights();
     return;
   }
+
   const shuffled = filtered.sort(() => 0.5 - Math.random());
   const sample = shuffled.slice(0, 3);
   animateKeyword(sample.join(" "));
@@ -298,12 +316,15 @@ function highlightKeywords(keywords) {
   clearHighlights();
   const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
   const nodesToReplace = [];
+
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
     if (parent.nodeName === "MARK") continue;
+
     let replaced = node.textContent;
     let matched = false;
+
     keywords.forEach(word => {
       const regex = new RegExp(`(${word})`, "g");
       if (regex.test(replaced)) {
@@ -311,12 +332,14 @@ function highlightKeywords(keywords) {
         replaced = replaced.replace(regex, `<mark class=\"keyword-highlight\">$1</mark>`);
       }
     });
+
     if (matched) {
       const span = document.createElement("span");
       span.innerHTML = replaced;
       nodesToReplace.push({ oldNode: node, newNode: span });
     }
   }
+
   nodesToReplace.forEach(({ oldNode, newNode }) => {
     oldNode.parentNode.replaceChild(newNode, oldNode);
   });
@@ -334,6 +357,7 @@ function animateKeyword(text) {
     keywordBox.textContent = " ";
     return;
   }
+
   const words = text.split(" ");
   words.forEach((word, i) => {
     [...word].forEach(char => {
@@ -343,6 +367,7 @@ function animateKeyword(text) {
       span.style.animationDelay = `${Math.random()}s`;
       keywordBox.appendChild(span);
     });
+
     if (i < words.length - 1) {
       const spacer = document.createElement("span");
       spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
