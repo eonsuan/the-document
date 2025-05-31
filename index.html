@@ -128,7 +128,6 @@
 <!-- 데이터연동 -->
 
 // 잠좀처자자
-// Firebase 모듈 기반 문단 삽입 위치 지정 및 중복 렌더링 방지 + 전체 사용자 닉네임 표시 + base64 이미지 저장 + 키워드 하이라이트 유지
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -162,21 +161,19 @@ const messageInput = document.getElementById("message-input");
 const imageInput = document.getElementById("image-input");
 const documentDiv = document.getElementById("document");
 const keywordBox = document.getElementById("keyword-box");
-const nicknameList = document.getElementById("community-list-container");
+const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-const nicknameSet = new Set();
 
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
-function renderEntry(docData, docId, beforeId) {
-  // 이미 렌더링된 경우 중복 방지
-  if (singleEntry.querySelector(`[data-id="${docId}"]`)) return;
+const nicknameSet = new Set();
 
+function renderEntry(docData, docId) {
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = docData.name;
@@ -197,6 +194,7 @@ function renderEntry(docData, docId, beforeId) {
     textSpan.textContent = docData.message + " ";
     entryWrapper.appendChild(textSpan);
   }
+
   if (docData.imageData) {
     const img = document.createElement("img");
     img.src = docData.imageData;
@@ -205,21 +203,7 @@ function renderEntry(docData, docId, beforeId) {
   }
 
   entryWrapper.appendChild(insertBtn);
-  entryWrapper.dataset.afterId = docData.afterId || "";
-
-  const target = [...singleEntry.children].find(child => child.dataset.id === docData.afterId);
-  if (target && target.nextSibling) {
-    singleEntry.insertBefore(entryWrapper, target.nextSibling);
-  } else {
-    singleEntry.appendChild(entryWrapper);
-  }
-
-  if (!nicknameSet.has(docData.name)) {
-    nicknameSet.add(docData.name);
-    const div = document.createElement("div");
-    div.textContent = docData.name;
-    nicknameList.appendChild(div);
-  }
+  return entryWrapper;
 }
 
 submitButton.addEventListener("click", async () => {
@@ -231,57 +215,70 @@ submitButton.addEventListener("click", async () => {
   const afterId = selectedInsertTargetId;
   selectedInsertTargetId = null;
 
-  if (file) {
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const imageData = reader.result;
-      await addDoc(entries, {
-        name,
-        message,
-        imageData,
-        afterId: afterId || null,
-        timestamp: Date.now()
-      });
-      nameInput.value = "";
-      messageInput.value = "";
-      imageInput.value = "";
-    };
-    reader.readAsDataURL(file);
-  } else {
+  const saveEntry = async (imageData = "") => {
     await addDoc(entries, {
       name,
       message,
-      imageData: "",
+      imageData,
       afterId: afterId || null,
       timestamp: Date.now()
     });
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
+  };
+
+  if (file) {
+    const reader = new FileReader();
+    reader.onloadend = () => saveEntry(reader.result);
+    reader.readAsDataURL(file);
+  } else {
+    await saveEntry();
   }
 });
 
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
-  const docMap = new Map();
+  singleEntry.innerHTML = "";
+  communityList.innerHTML = "";
+  nicknameSet.clear();
 
+  const docMap = new Map();
   snapshot.forEach(doc => {
-    if (singleEntry.querySelector(`[data-id="${doc.id}"]`)) return; // 중복 방지 핵심
-    const data = doc.data();
-    docMap.set(doc.id, { data, id: doc.id });
+    docMap.set(doc.id, { ...doc.data(), id: doc.id });
   });
 
-  function renderRecursive(afterId) {
-    for (const [id, entry] of docMap.entries()) {
-      if (entry.data.afterId === afterId) {
-        renderEntry(entry.data, id, entry.data.afterId);
+  const rendered = new Set();
+
+  const renderRecursive = (afterId) => {
+    for (const [id, doc] of docMap) {
+      if (doc.afterId === afterId && !rendered.has(id)) {
+        const entry = renderEntry(doc, id);
+        const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
+        if (target && target.nextSibling) {
+          singleEntry.insertBefore(entry, target.nextSibling);
+        } else if (target) {
+          singleEntry.appendChild(entry);
+        } else {
+          singleEntry.insertBefore(entry, singleEntry.firstChild);
+        }
+        rendered.add(id);
+
+        if (!nicknameSet.has(doc.name)) {
+          nicknameSet.add(doc.name);
+          const div = document.createElement("div");
+          div.textContent = doc.name;
+          communityList.appendChild(div);
+        }
+
         renderRecursive(id);
       }
     }
-  }
-  renderRecursive(null);
+  };
 
+  renderRecursive(null);
   extractKeywords();
+
   if (!keywordIntervalStarted) {
     keywordIntervalStarted = true;
     setInterval(extractKeywords, 10000);
@@ -293,13 +290,11 @@ function extractKeywords() {
   const words = text.match(/\w+|[가-힣]{2,}/g) || [];
   const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
   const filtered = words.filter(w => !stopwords.includes(w));
-
   if (filtered.length === 0) {
     animateKeyword("");
     clearHighlights();
     return;
   }
-
   const shuffled = filtered.sort(() => 0.5 - Math.random());
   const sample = shuffled.slice(0, 3);
   animateKeyword(sample.join(" "));
@@ -310,7 +305,6 @@ function highlightKeywords(keywords) {
   clearHighlights();
   const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
   const nodesToReplace = [];
-
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
@@ -318,7 +312,6 @@ function highlightKeywords(keywords) {
 
     let replaced = node.textContent;
     let matched = false;
-
     keywords.forEach(word => {
       const regex = new RegExp(`(${word})`, "g");
       if (regex.test(replaced)) {
@@ -333,7 +326,6 @@ function highlightKeywords(keywords) {
       nodesToReplace.push({ oldNode: node, newNode: span });
     }
   }
-
   nodesToReplace.forEach(({ oldNode, newNode }) => {
     oldNode.parentNode.replaceChild(newNode, oldNode);
   });
@@ -351,7 +343,6 @@ function animateKeyword(text) {
     keywordBox.textContent = " ";
     return;
   }
-
   const words = text.split(" ");
   words.forEach((word, i) => {
     [...word].forEach(char => {
@@ -361,7 +352,6 @@ function animateKeyword(text) {
       span.style.animationDelay = `${Math.random()}s`;
       keywordBox.appendChild(span);
     });
-
     if (i < words.length - 1) {
       const spacer = document.createElement("span");
       spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
@@ -370,8 +360,6 @@ function animateKeyword(text) {
   });
 }
 </script>
-
-
-
+  
 </body>
 </html>
