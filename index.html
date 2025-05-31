@@ -169,10 +169,14 @@
   const communityListContainer = document.getElementById("community-list-container");
   const keywordBox = document.getElementById("keyword-box");
 
-  const singleEntry = document.createElement("span");
+let singleEntry = document.querySelector('.entry[data-nickname="shared"]');
+
+if (!singleEntry) {
+  singleEntry = document.createElement("span");
   singleEntry.className = "entry";
   singleEntry.dataset.nickname = "shared";
-  documentDiv.appendChild(singleEntry);
+  document.getElementById("document").appendChild(singleEntry);
+}
 
   const nicknameSet = new Set();
   const nicknameList = document.createElement("ul");
