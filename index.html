@@ -127,8 +127,9 @@
 
 <!-- 데이터연동 -->
 
-// 똥
+// 씹탱볼
   
+// Firebase 모듈 기반 문단 삽입 위치 지정 및 닉네임 전체 반영 스크립트
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -161,10 +162,10 @@ const nameInput = document.getElementById("name-input");
 const messageInput = document.getElementById("message-input");
 const imageInput = document.getElementById("image-input");
 const documentDiv = document.getElementById("document");
-const communityContainer = document.getElementById("community-list-container");
 const keywordBox = document.getElementById("keyword-box");
+const communityContainer = document.getElementById("community-list-container");
 
-let selectedInsertTarget = null;
+let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
 
 const singleEntry = document.createElement("span");
@@ -172,31 +173,19 @@ singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
-const nicknameSet = new Set();
-const nicknameList = document.createElement("div");
-nicknameList.style.padding = "10px";
-nicknameList.style.margin = "0";
-nicknameList.style.listStyle = "none";
-nicknameList.style.fontSize = "1.1rem";
-nicknameList.style.display = "flex";
-nicknameList.style.flexDirection = "column";
-communityContainer.innerHTML = "";
-communityContainer.appendChild(nicknameList);
-
 function renderEntry(docData, docId) {
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = docData.name;
+  entryWrapper.dataset.id = docId;
 
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
 
   insertBtn.addEventListener("click", () => {
-    if (selectedInsertTarget) {
-      selectedInsertTarget.classList.remove("insert-target");
-    }
-    selectedInsertTarget = entryWrapper;
+    selectedInsertTargetId = docId;
+    document.querySelectorAll(".insert-target").forEach(el => el.classList.remove("insert-target"));
     entryWrapper.classList.add("insert-target");
   });
 
@@ -215,35 +204,25 @@ function renderEntry(docData, docId) {
   }
 
   entryWrapper.appendChild(insertBtn);
+  entryWrapper.dataset.timestamp = docData.timestamp;
+  entryWrapper.dataset.afterId = docData.afterId || "";
 
-  if (selectedInsertTarget && selectedInsertTarget.parentNode === singleEntry) {
-    singleEntry.insertBefore(entryWrapper, selectedInsertTarget.nextSibling);
+  const target = [...singleEntry.children].find(child => child.dataset.id === docData.afterId);
+  if (target && target.nextSibling) {
+    singleEntry.insertBefore(entryWrapper, target.nextSibling);
   } else {
     singleEntry.appendChild(entryWrapper);
   }
-}
-
-function updateNicknameList(snapshot) {
-  nicknameSet.clear();
-  nicknameList.innerHTML = "";
-
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    if (data.name && !nicknameSet.has(data.name)) {
-      nicknameSet.add(data.name);
-      const div = document.createElement("div");
-      div.textContent = data.name;
-      nicknameList.appendChild(div);
-    }
-  });
 }
 
 submitButton.addEventListener("click", async () => {
   const name = nameInput.value.trim();
   const message = messageInput.value.trim();
   const file = imageInput.files[0];
-
   if (!name || (!message && !file)) return;
+
+  const afterId = selectedInsertTargetId;
+  selectedInsertTargetId = null;
 
   if (file) {
     const reader = new FileReader();
@@ -253,6 +232,7 @@ submitButton.addEventListener("click", async () => {
         name,
         message,
         imageData,
+        afterId: afterId || null,
         timestamp: Date.now()
       });
       nameInput.value = "";
@@ -265,6 +245,7 @@ submitButton.addEventListener("click", async () => {
       name,
       message,
       imageData: "",
+      afterId: afterId || null,
       timestamp: Date.now()
     });
     nameInput.value = "";
@@ -276,10 +257,35 @@ submitButton.addEventListener("click", async () => {
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
-  snapshot.forEach(doc => renderEntry(doc.data(), doc.id));
-  updateNicknameList(snapshot);
-  extractKeywords();
+  const docMap = new Map();
+  const nicknameSet = new Set();
+  communityContainer.innerHTML = "";
 
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    docMap.set(doc.id, { data, id: doc.id });
+    if (!nicknameSet.has(data.name)) {
+      nicknameSet.add(data.name);
+      const div = document.createElement("div");
+      div.textContent = data.name;
+      communityContainer.appendChild(div);
+    }
+  });
+
+  const rendered = new Set();
+
+  function renderRecursive(afterId) {
+    for (const [id, entry] of docMap.entries()) {
+      if (entry.data.afterId === afterId && !rendered.has(id)) {
+        renderEntry(entry.data, id);
+        rendered.add(id);
+        renderRecursive(id);
+      }
+    }
+  }
+  renderRecursive(null);
+
+  extractKeywords();
   if (!keywordIntervalStarted) {
     keywordIntervalStarted = true;
     setInterval(extractKeywords, 10000);
@@ -368,6 +374,7 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 
 </body>
 </html>
