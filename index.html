@@ -236,23 +236,18 @@ submitButton.addEventListener("click", async () => {
   const message = messageInput.value.trim();
   const file = imageInput.files[0];
 
-  if (!name || (!message && !file)) {
-    console.log("🚫 이름도 없고 메시지도 없고 이미지도 없어서 저장하지 않음");
-    return;
-  }
+  if (!name || (!message && !file)) return;
 
   let imageUrl = "";
 
   try {
     if (file) {
-      console.log("📂 파일 선택됨:", file.name);
       const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
       const snapshot = await uploadBytes(storageRef, file);
-      console.log("✅ 업로드 완료:", snapshot);
       imageUrl = await getDownloadURL(snapshot.ref);
-      console.log("🌐 다운로드 URL:", imageUrl);
+      console.log("이미지 업로드 성공:", imageUrl);
     } else {
-      console.log("ℹ️ 이미지 없이 텍스트만 저장");
+      console.log("이미지 없음. 텍스트만 저장");
     }
 
     await addDoc(entries, {
@@ -261,14 +256,14 @@ submitButton.addEventListener("click", async () => {
       imageUrl,
       timestamp: Date.now()
     });
+    console.log("Firestore 저장 성공");
 
-    console.log("✅ Firestore 저장 완료");
-
+    // 입력창 초기화
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
   } catch (error) {
-    console.error("🚨 업로드 중 오류:", error);
+    console.error("오류 발생:", error);
   }
 });
 
@@ -365,7 +360,7 @@ function animateKeyword(text) {
     }
   });
 }
-</script
-
+</script>
+  
 </body>
 </html>
