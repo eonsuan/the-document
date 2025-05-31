@@ -127,7 +127,8 @@
 
 <!-- 데이터연동 -->
 
-// poppop
+// 잠좀처자자
+// Firebase 모듈 기반 문단 삽입 위치 지정 및 중복 렌더링 방지 + 전체 사용자 닉네임 표시 + base64 이미지 저장 + 키워드 하이라이트 유지
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -161,7 +162,7 @@ const messageInput = document.getElementById("message-input");
 const imageInput = document.getElementById("image-input");
 const documentDiv = document.getElementById("document");
 const keywordBox = document.getElementById("keyword-box");
-const communityContainer = document.getElementById("community-list-container");
+const nicknameList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
@@ -172,7 +173,10 @@ singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
-function renderEntry(docData, docId) {
+function renderEntry(docData, docId, beforeId) {
+  // 이미 렌더링된 경우 중복 방지
+  if (singleEntry.querySelector(`[data-id="${docId}"]`)) return;
+
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = docData.name;
@@ -181,7 +185,6 @@ function renderEntry(docData, docId) {
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
-
   insertBtn.addEventListener("click", () => {
     selectedInsertTargetId = docId;
     document.querySelectorAll(".insert-target").forEach(el => el.classList.remove("insert-target"));
@@ -194,7 +197,6 @@ function renderEntry(docData, docId) {
     textSpan.textContent = docData.message + " ";
     entryWrapper.appendChild(textSpan);
   }
-
   if (docData.imageData) {
     const img = document.createElement("img");
     img.src = docData.imageData;
@@ -203,7 +205,6 @@ function renderEntry(docData, docId) {
   }
 
   entryWrapper.appendChild(insertBtn);
-  entryWrapper.dataset.timestamp = docData.timestamp;
   entryWrapper.dataset.afterId = docData.afterId || "";
 
   const target = [...singleEntry.children].find(child => child.dataset.id === docData.afterId);
@@ -217,7 +218,7 @@ function renderEntry(docData, docId) {
     nicknameSet.add(docData.name);
     const div = document.createElement("div");
     div.textContent = docData.name;
-    communityContainer.appendChild(div);
+    nicknameList.appendChild(div);
   }
 }
 
@@ -228,6 +229,7 @@ submitButton.addEventListener("click", async () => {
   if (!name || (!message && !file)) return;
 
   const afterId = selectedInsertTargetId;
+  selectedInsertTargetId = null;
 
   if (file) {
     const reader = new FileReader();
@@ -240,8 +242,6 @@ submitButton.addEventListener("click", async () => {
         afterId: afterId || null,
         timestamp: Date.now()
       });
-
-      selectedInsertTargetId = null;
       nameInput.value = "";
       messageInput.value = "";
       imageInput.value = "";
@@ -255,8 +255,6 @@ submitButton.addEventListener("click", async () => {
       afterId: afterId || null,
       timestamp: Date.now()
     });
-
-    selectedInsertTargetId = null;
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
@@ -265,22 +263,18 @@ submitButton.addEventListener("click", async () => {
 
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
-  singleEntry.innerHTML = "";
-  communityContainer.innerHTML = "";
-  nicknameSet.clear();
-
   const docMap = new Map();
+
   snapshot.forEach(doc => {
+    if (singleEntry.querySelector(`[data-id="${doc.id}"]`)) return; // 중복 방지 핵심
     const data = doc.data();
     docMap.set(doc.id, { data, id: doc.id });
   });
 
-  const rendered = new Set();
   function renderRecursive(afterId) {
     for (const [id, entry] of docMap.entries()) {
-      if (entry.data.afterId === afterId && !rendered.has(id)) {
-        renderEntry(entry.data, id);
-        rendered.add(id);
+      if (entry.data.afterId === afterId) {
+        renderEntry(entry.data, id, entry.data.afterId);
         renderRecursive(id);
       }
     }
@@ -376,6 +370,7 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 
 
 </body>
