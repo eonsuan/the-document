@@ -127,10 +127,9 @@
 
 <!-- 데이터연동 -->
 
-새로고침
+ㅎ
 
-  // Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 + 새로고침 유지 스크립트
-<script type="module">
+  <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -139,9 +138,7 @@ import {
   addDoc,
   onSnapshot,
   query,
-  orderBy,
-  doc,
-  getDocs
+  orderBy
 } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -169,13 +166,12 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
+const nicknameSet = new Set();
 
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
-
-const nicknameSet = new Set();
 
 function renderEntry(docData, docId) {
   const entryWrapper = document.createElement("span");
@@ -241,7 +237,7 @@ submitButton.addEventListener("click", async () => {
   }
 });
 
-const q = query(entries);
+const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
@@ -253,10 +249,13 @@ onSnapshot(q, (snapshot) => {
   });
 
   const rendered = new Set();
-  function renderRecursive(afterId) {
+
+  const renderRecursive = (afterId) => {
     for (const [id, doc] of docMap) {
-      if ((doc.afterId || null) === (afterId || null) && !rendered.has(id)) {
+      if (doc.afterId === afterId && !rendered.has(id)) {
         const entry = renderEntry(doc, id);
+        rendered.add(id);
+
         const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
         if (target && target.nextSibling) {
           singleEntry.insertBefore(entry, target.nextSibling);
@@ -265,7 +264,6 @@ onSnapshot(q, (snapshot) => {
         } else {
           singleEntry.insertBefore(entry, singleEntry.firstChild);
         }
-        rendered.add(id);
 
         if (!nicknameSet.has(doc.name)) {
           nicknameSet.add(doc.name);
@@ -273,10 +271,12 @@ onSnapshot(q, (snapshot) => {
           div.textContent = doc.name;
           communityList.appendChild(div);
         }
+
         renderRecursive(id);
       }
     }
-  }
+  };
+
   renderRecursive(null);
   extractKeywords();
 
@@ -288,7 +288,7 @@ onSnapshot(q, (snapshot) => {
 
 function extractKeywords() {
   const text = singleEntry.textContent;
-  const words = text.match(/\w+|[가-힣]{2,}/g) || [];
+  const words = text.match(/\w+|[\uAC00-\uD7A3]{2,}/g) || [];
   const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
   const filtered = words.filter(w => !stopwords.includes(w));
   if (filtered.length === 0) {
