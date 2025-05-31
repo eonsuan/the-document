@@ -127,10 +127,8 @@
 
 <!-- 데이터연동 -->
 
-ㅇ
-  
-  // Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
-  <script type="module">
+// Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
+<script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -167,7 +165,6 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-let tempQueue = []; // 전체 리스트 캐시
 
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
@@ -175,39 +172,6 @@ singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
 const nicknameSet = new Set();
-
-function renderEntry(docData, docId) {
-  const entryWrapper = document.createElement("span");
-  entryWrapper.className = "entry";
-  entryWrapper.dataset.nickname = docData.name;
-  entryWrapper.dataset.id = docId;
-
-  const insertBtn = document.createElement("button");
-  insertBtn.textContent = "+";
-  insertBtn.className = "insert-button";
-  insertBtn.addEventListener("click", () => {
-    selectedInsertTargetId = docId;
-    document.querySelectorAll(".insert-target").forEach(el => el.classList.remove("insert-target"));
-    entryWrapper.classList.add("insert-target");
-  });
-
-  if (docData.message) {
-    const textSpan = document.createElement("span");
-    textSpan.className = "entry-text";
-    textSpan.textContent = docData.message + " ";
-    entryWrapper.appendChild(textSpan);
-  }
-
-  if (docData.imageData) {
-    const img = document.createElement("img");
-    img.src = docData.imageData;
-    img.className = "inline-img";
-    entryWrapper.appendChild(img);
-  }
-
-  entryWrapper.appendChild(insertBtn);
-  return entryWrapper;
-}
 
 submitButton.addEventListener("click", async () => {
   const name = nameInput.value.trim();
@@ -228,7 +192,7 @@ submitButton.addEventListener("click", async () => {
 
   const saveEntry = async (imageData = "") => {
     entryData.imageData = imageData;
-    await addDoc(entries, entryData); // ⬅️ 여기까지만. DOM 조작 X
+    await addDoc(entries, entryData);
   };
 
   if (file) {
@@ -246,18 +210,13 @@ submitButton.addEventListener("click", async () => {
 
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
-  tempQueue = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-  renderFromQueue();
-});
-
-function renderFromQueue() {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
 
   const docMap = new Map();
-  tempQueue.forEach(doc => {
-    docMap.set(doc.id, doc);
+  snapshot.forEach(doc => {
+    docMap.set(doc.id, { ...doc.data(), id: doc.id });
   });
 
   const rendered = new Set();
@@ -265,16 +224,46 @@ function renderFromQueue() {
   const renderRecursive = (afterId) => {
     for (const [id, doc] of docMap) {
       if (doc.afterId === afterId && !rendered.has(id)) {
-        const entry = renderEntry(doc, id);
+        rendered.add(id);
+
+        const entryWrapper = document.createElement("span");
+        entryWrapper.className = "entry";
+        entryWrapper.dataset.nickname = doc.name;
+        entryWrapper.dataset.id = id;
+
+        const insertBtn = document.createElement("button");
+        insertBtn.textContent = "+";
+        insertBtn.className = "insert-button";
+        insertBtn.addEventListener("click", () => {
+          selectedInsertTargetId = id;
+          document.querySelectorAll(".insert-target").forEach(el => el.classList.remove("insert-target"));
+          entryWrapper.classList.add("insert-target");
+        });
+
+        if (doc.message) {
+          const textSpan = document.createElement("span");
+          textSpan.className = "entry-text";
+          textSpan.textContent = doc.message + " ";
+          entryWrapper.appendChild(textSpan);
+        }
+
+        if (doc.imageData) {
+          const img = document.createElement("img");
+          img.src = doc.imageData;
+          img.className = "inline-img";
+          entryWrapper.appendChild(img);
+        }
+
+        entryWrapper.appendChild(insertBtn);
+
         const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
         if (target && target.nextSibling) {
-          singleEntry.insertBefore(entry, target.nextSibling);
+          singleEntry.insertBefore(entryWrapper, target.nextSibling);
         } else if (target) {
-          singleEntry.appendChild(entry);
+          singleEntry.appendChild(entryWrapper);
         } else {
-          singleEntry.insertBefore(entry, singleEntry.firstChild);
+          singleEntry.insertBefore(entryWrapper, singleEntry.firstChild);
         }
-        rendered.add(id);
 
         if (!nicknameSet.has(doc.name)) {
           nicknameSet.add(doc.name);
@@ -290,11 +279,12 @@ function renderFromQueue() {
 
   renderRecursive(null);
   extractKeywords();
+
   if (!keywordIntervalStarted) {
     keywordIntervalStarted = true;
     setInterval(extractKeywords, 10000);
   }
-}
+});
 
 function extractKeywords() {
   const text = singleEntry.textContent;
@@ -370,8 +360,7 @@ function animateKeyword(text) {
     }
   });
 }
-  </script>
-
+</script>
 
 </body>
 </html>
