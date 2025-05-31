@@ -157,37 +157,65 @@
 
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
-
   const db = getFirestore(app);
   const storage = getStorage(app);
   const entries = collection(db, "doc");
 
-  const submitButton = document.getElementById("submit-entry");
   const nameInput = document.getElementById("name-input");
   const messageInput = document.getElementById("message-input");
   const imageInput = document.getElementById("image-input");
+  const submitButton = document.getElementById("submit-entry");
   const documentDiv = document.getElementById("document");
-  const communityContainer = document.getElementById("community-list-container");
-
-  const nicknameSet = new Set();
-  const nicknameList = document.createElement("div");
-  nicknameList.style.padding = "10px";
-  nicknameList.style.margin = "0";
-  nicknameList.style.listStyle = "none";
-  nicknameList.style.fontSize = "1.1rem";
-  nicknameList.style.display = "flex";
-  nicknameList.style.flexDirection = "column";
-  communityContainer.innerHTML = "";
-  communityContainer.appendChild(nicknameList);
+  const communityListContainer = document.getElementById("community-list-container");
+  const keywordBox = document.getElementById("keyword-box");
 
   const singleEntry = document.createElement("span");
   singleEntry.className = "entry";
   singleEntry.dataset.nickname = "shared";
   documentDiv.appendChild(singleEntry);
 
-  let selectedInsertTarget = null;
+  const nicknameSet = new Set();
+  const nicknameList = document.createElement("ul");
+  nicknameList.style.padding = "10px";
+  nicknameList.style.margin = "0";
+  nicknameList.style.listStyle = "none";
+  nicknameList.style.fontSize = "1.1rem";
+  communityListContainer.appendChild(nicknameList);
 
-  function renderEntry(data) {
+  let selectedInsertTarget = null;
+  let keywordIntervalStarted = false;
+
+  async function uploadImageAndGetURL(file) {
+    const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+    const snapshot = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snapshot.ref);
+  }
+
+  submitButton.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    const message = messageInput.value.trim();
+    const file = imageInput.files[0];
+
+    if (!name || (!message && !file)) return;
+
+    let imageUrl = "";
+    if (file) {
+      imageUrl = await uploadImageAndGetURL(file);
+    }
+
+    await addDoc(entries, {
+      name,
+      message,
+      imageUrl,
+      timestamp: Date.now()
+    });
+
+    nameInput.value = "";
+    messageInput.value = "";
+    imageInput.value = "";
+  });
+
+  function createEntry(data) {
     const entryWrapper = document.createElement("span");
     entryWrapper.className = "entry";
     entryWrapper.dataset.nickname = data.name;
@@ -195,7 +223,6 @@
     const insertBtn = document.createElement("button");
     insertBtn.textContent = "+";
     insertBtn.className = "insert-button";
-
     insertBtn.addEventListener("click", () => {
       if (selectedInsertTarget) {
         selectedInsertTarget.classList.remove("insert-target");
@@ -219,50 +246,75 @@
     }
 
     entryWrapper.appendChild(insertBtn);
-    singleEntry.appendChild(entryWrapper);
+    if (selectedInsertTarget && selectedInsertTarget.parentNode === singleEntry) {
+      singleEntry.insertBefore(entryWrapper, selectedInsertTarget.nextSibling);
+    } else {
+      singleEntry.appendChild(entryWrapper);
+    }
 
     if (!nicknameSet.has(data.name)) {
       nicknameSet.add(data.name);
-      const div = document.createElement("div");
-      div.textContent = data.name;
-      nicknameList.appendChild(div);
+      const li = document.createElement("li");
+      li.textContent = data.name;
+      nicknameList.appendChild(li);
     }
   }
-
-  submitButton.addEventListener("click", async () => {
-    const name = nameInput.value.trim();
-    const message = messageInput.value.trim();
-    const file = imageInput.files[0];
-
-    if (!name || (!message && !file)) return;
-
-    let imageUrl = "";
-    if (file) {
-      const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      imageUrl = await getDownloadURL(snapshot.ref);
-    }
-
-    await addDoc(entries, {
-      name,
-      message,
-      imageUrl,
-      timestamp: Date.now()
-    });
-
-    nameInput.value = "";
-    messageInput.value = "";
-    imageInput.value = "";
-  });
 
   const q = query(entries, orderBy("timestamp"));
   onSnapshot(q, (snapshot) => {
     singleEntry.innerHTML = "";
     snapshot.forEach(doc => {
-      renderEntry(doc.data());
+      createEntry(doc.data());
     });
+
+    if (!keywordIntervalStarted) {
+      extractKeywords();
+      setInterval(extractKeywords, 10000);
+      keywordIntervalStarted = true;
+    }
   });
+
+  function extractKeywords() {
+    const text = singleEntry.textContent;
+    const words = text.match(/[\w가-힣]{2,}/g) || [];
+    const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
+    const filtered = words.filter(w => !stopwords.includes(w));
+    if (filtered.length === 0) {
+      animateKeyword("");
+      return;
+    }
+
+    const shuffled = filtered.sort(() => 0.5 - Math.random());
+    const sample = shuffled.slice(0, 3);
+    animateKeyword(sample.join(" "));
+  }
+
+  function animateKeyword(text) {
+    keywordBox.innerHTML = "";
+    if (!text.trim()) {
+      keywordBox.textContent = " ";
+      return;
+    }
+
+    const words = text.split(" ");
+    words.forEach((word, i) => {
+      [...word].forEach(char => {
+        const span = document.createElement("span");
+        span.className = "floating-char";
+        span.textContent = char;
+        span.style.animationDelay = `${Math.random()}s`;
+        keywordBox.appendChild(span);
+      });
+
+      if (i < words.length - 1) {
+        const spacer = document.createElement("span");
+        spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
+        keywordBox.appendChild(spacer);
+      }
+    });
+  }
 </script>
+
 
 </body>
 </html>
