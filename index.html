@@ -239,22 +239,30 @@ submitButton.addEventListener("click", async () => {
   if (!name || (!message && !file)) return;
 
   let imageUrl = "";
-  if (file) {
-    const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
-    const snapshot = await uploadBytes(storageRef, file);
-    imageUrl = await getDownloadURL(snapshot.ref);
+
+  try {
+    if (file) {
+      const storageRef = ref(storage, `images/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      imageUrl = await getDownloadURL(snapshot.ref);
+      console.log("✅ 이미지 업로드 성공:", imageUrl);
+    }
+
+    await addDoc(entries, {
+      name,
+      message,
+      imageUrl, // ← 이 부분 중요!
+      timestamp: Date.now()
+    });
+    console.log("✅ Firestore 저장 성공");
+
+    // 입력창 초기화
+    nameInput.value = "";
+    messageInput.value = "";
+    imageInput.value = "";
+  } catch (error) {
+    console.error("🚨 오류 발생:", error);
   }
-
-  await addDoc(entries, {
-    name,
-    message,
-    imageUrl,
-    timestamp: Date.now()
-  });
-
-  nameInput.value = "";
-  messageInput.value = "";
-  imageInput.value = "";
 });
 
 const q = query(entries, orderBy("timestamp"));
