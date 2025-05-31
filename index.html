@@ -127,8 +127,7 @@
 
 <!-- 데이터연동 -->
 
-ㅈㅂ
-  <script type="module">
+<script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -165,6 +164,7 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
+let isInitialLoad = true;
 
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
@@ -223,7 +223,6 @@ submitButton.addEventListener("click", async () => {
       afterId: afterId || null,
       timestamp: Date.now()
     });
-    // 👉 DOM 조작하지 않음! 오직 onSnapshot에서만 그리게!
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
@@ -239,7 +238,11 @@ submitButton.addEventListener("click", async () => {
 });
 
 const q = query(entries, orderBy("timestamp"));
+
 onSnapshot(q, (snapshot) => {
+  if (!isInitialLoad) return;
+  isInitialLoad = false;
+
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
