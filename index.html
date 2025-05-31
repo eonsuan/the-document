@@ -127,7 +127,8 @@
 
 <!-- 데이터연동 -->
 
-ㅋㅋㅋ
+ㅇ
+  
   // Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
   <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
@@ -217,7 +218,7 @@ submitButton.addEventListener("click", async () => {
   const afterId = selectedInsertTargetId;
   selectedInsertTargetId = null;
 
-  const newDoc = {
+  const entryData = {
     name,
     message,
     imageData: "",
@@ -226,10 +227,8 @@ submitButton.addEventListener("click", async () => {
   };
 
   const saveEntry = async (imageData = "") => {
-    newDoc.imageData = imageData;
-    const docRef = await addDoc(entries, newDoc);
-    tempQueue.push({ ...newDoc, id: docRef.id });
-    renderFromQueue();
+    entryData.imageData = imageData;
+    await addDoc(entries, entryData); // ⬅️ 여기까지만. DOM 조작 X
   };
 
   if (file) {
