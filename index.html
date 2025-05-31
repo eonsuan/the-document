@@ -127,7 +127,7 @@
 
 <!-- 데이터연동 -->
 
-// ✅ 전체 모듈 스크립트 - base64 이미지, 삽입 위치 선택, 키워드 인터랙션 유지
+// Firebase 모듈 기반 문단 삽입 위치 지정 및 새로고침 유지 스크립트
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -162,7 +162,7 @@ const imageInput = document.getElementById("image-input");
 const documentDiv = document.getElementById("document");
 const keywordBox = document.getElementById("keyword-box");
 
-let selectedInsertTarget = null;
+let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
 
 const singleEntry = document.createElement("span");
@@ -170,20 +170,19 @@ singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
-function renderEntry(docData, docId) {
+function renderEntry(docData, docId, beforeId) {
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = docData.name;
+  entryWrapper.dataset.id = docId;
 
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
 
   insertBtn.addEventListener("click", () => {
-    if (selectedInsertTarget) {
-      selectedInsertTarget.classList.remove("insert-target");
-    }
-    selectedInsertTarget = entryWrapper;
+    selectedInsertTargetId = docId;
+    document.querySelectorAll(".insert-target").forEach(el => el.classList.remove("insert-target"));
     entryWrapper.classList.add("insert-target");
   });
 
@@ -202,9 +201,12 @@ function renderEntry(docData, docId) {
   }
 
   entryWrapper.appendChild(insertBtn);
+  entryWrapper.dataset.timestamp = docData.timestamp;
+  entryWrapper.dataset.afterId = docData.afterId || "";
 
-  if (selectedInsertTarget && selectedInsertTarget.parentNode === singleEntry) {
-    singleEntry.insertBefore(entryWrapper, selectedInsertTarget.nextSibling);
+  const target = [...singleEntry.children].find(child => child.dataset.id === docData.afterId);
+  if (target && target.nextSibling) {
+    singleEntry.insertBefore(entryWrapper, target.nextSibling);
   } else {
     singleEntry.appendChild(entryWrapper);
   }
@@ -214,8 +216,10 @@ submitButton.addEventListener("click", async () => {
   const name = nameInput.value.trim();
   const message = messageInput.value.trim();
   const file = imageInput.files[0];
-
   if (!name || (!message && !file)) return;
+
+  const afterId = selectedInsertTargetId;
+  selectedInsertTargetId = null;
 
   if (file) {
     const reader = new FileReader();
@@ -225,6 +229,7 @@ submitButton.addEventListener("click", async () => {
         name,
         message,
         imageData,
+        afterId: afterId || null,
         timestamp: Date.now()
       });
       nameInput.value = "";
@@ -237,6 +242,7 @@ submitButton.addEventListener("click", async () => {
       name,
       message,
       imageData: "",
+      afterId: afterId || null,
       timestamp: Date.now()
     });
     nameInput.value = "";
@@ -248,9 +254,27 @@ submitButton.addEventListener("click", async () => {
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
-  snapshot.forEach(doc => renderEntry(doc.data(), doc.id));
-  extractKeywords();
+  const docMap = new Map();
 
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    docMap.set(doc.id, { data, id: doc.id });
+  });
+
+  const rendered = new Set();
+
+  function renderRecursive(afterId) {
+    for (const [id, entry] of docMap.entries()) {
+      if (entry.data.afterId === afterId && !rendered.has(id)) {
+        renderEntry(entry.data, id, entry.data.afterId);
+        rendered.add(id);
+        renderRecursive(id);
+      }
+    }
+  }
+  renderRecursive(null);
+
+  extractKeywords();
   if (!keywordIntervalStarted) {
     keywordIntervalStarted = true;
     setInterval(extractKeywords, 10000);
@@ -339,6 +363,7 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 
 </body>
 </html>
