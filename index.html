@@ -127,8 +127,10 @@
 
 <!-- 데이터연동 -->
 
-;;
-  <script type="module">
+새로고침
+
+  // Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 + 새로고침 유지 스크립트
+<script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -137,7 +139,9 @@ import {
   addDoc,
   onSnapshot,
   query,
-  orderBy
+  orderBy,
+  doc,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -165,7 +169,7 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-let tempEntryQueue = []; // 임시 반영용
+
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
@@ -216,16 +220,16 @@ submitButton.addEventListener("click", async () => {
   selectedInsertTargetId = null;
 
   const saveEntry = async (imageData = "") => {
-    const newDoc = {
+    await addDoc(entries, {
       name,
       message,
       imageData,
       afterId: afterId || null,
       timestamp: Date.now()
-    };
-    const docRef = await addDoc(entries, newDoc);
-    tempEntryQueue.push({ ...newDoc, id: docRef.id });
-    renderDocument();
+    });
+    nameInput.value = "";
+    messageInput.value = "";
+    imageInput.value = "";
   };
 
   if (file) {
@@ -237,28 +241,30 @@ submitButton.addEventListener("click", async () => {
   }
 });
 
-const q = query(entries, orderBy("timestamp"));
+const q = query(entries);
 onSnapshot(q, (snapshot) => {
-  tempEntryQueue = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-  renderDocument();
-});
-
-function renderDocument() {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
 
   const docMap = new Map();
-  tempEntryQueue.forEach(doc => {
-    docMap.set(doc.id, doc);
+  snapshot.forEach(doc => {
+    docMap.set(doc.id, { ...doc.data(), id: doc.id });
   });
 
   const rendered = new Set();
-
-  const renderRecursive = (afterId) => {
+  function renderRecursive(afterId) {
     for (const [id, doc] of docMap) {
-      if (doc.afterId === afterId && !rendered.has(id)) {
+      if ((doc.afterId || null) === (afterId || null) && !rendered.has(id)) {
         const entry = renderEntry(doc, id);
+        const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
+        if (target && target.nextSibling) {
+          singleEntry.insertBefore(entry, target.nextSibling);
+        } else if (target) {
+          singleEntry.appendChild(entry);
+        } else {
+          singleEntry.insertBefore(entry, singleEntry.firstChild);
+        }
         rendered.add(id);
 
         if (!nicknameSet.has(doc.name)) {
@@ -267,15 +273,18 @@ function renderDocument() {
           div.textContent = doc.name;
           communityList.appendChild(div);
         }
-
         renderRecursive(id);
       }
     }
-  };
-
+  }
   renderRecursive(null);
   extractKeywords();
-}
+
+  if (!keywordIntervalStarted) {
+    keywordIntervalStarted = true;
+    setInterval(extractKeywords, 10000);
+  }
+});
 
 function extractKeywords() {
   const text = singleEntry.textContent;
@@ -352,6 +361,7 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 
 
 </body>
