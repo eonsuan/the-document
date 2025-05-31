@@ -127,9 +127,7 @@
 
 <!-- 데이터연동 -->
 
-// 씹탱볼
-  
-// Firebase 모듈 기반 문단 삽입 위치 지정 및 닉네임 전체 반영 스크립트
+// Firebase 모듈 기반 문단 삽입 위치 지정 및 중복 방지 최종 스크립트
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -167,7 +165,7 @@ const communityContainer = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-
+const nicknameSet = new Set();
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
@@ -204,14 +202,19 @@ function renderEntry(docData, docId) {
   }
 
   entryWrapper.appendChild(insertBtn);
-  entryWrapper.dataset.timestamp = docData.timestamp;
-  entryWrapper.dataset.afterId = docData.afterId || "";
 
   const target = [...singleEntry.children].find(child => child.dataset.id === docData.afterId);
   if (target && target.nextSibling) {
     singleEntry.insertBefore(entryWrapper, target.nextSibling);
   } else {
     singleEntry.appendChild(entryWrapper);
+  }
+
+  if (!nicknameSet.has(docData.name)) {
+    nicknameSet.add(docData.name);
+    const div = document.createElement("div");
+    div.textContent = docData.name;
+    communityContainer.appendChild(div);
   }
 }
 
@@ -224,33 +227,27 @@ submitButton.addEventListener("click", async () => {
   const afterId = selectedInsertTargetId;
   selectedInsertTargetId = null;
 
-  if (file) {
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const imageData = reader.result;
-      await addDoc(entries, {
-        name,
-        message,
-        imageData,
-        afterId: afterId || null,
-        timestamp: Date.now()
-      });
-      nameInput.value = "";
-      messageInput.value = "";
-      imageInput.value = "";
-    };
-    reader.readAsDataURL(file);
-  } else {
+  const saveEntry = async (imageData = "") => {
     await addDoc(entries, {
       name,
       message,
-      imageData: "",
+      imageData,
       afterId: afterId || null,
       timestamp: Date.now()
     });
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
+  };
+
+  if (file) {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      saveEntry(reader.result);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    await saveEntry();
   }
 });
 
@@ -258,22 +255,11 @@ const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
   const docMap = new Map();
-  const nicknameSet = new Set();
-  communityContainer.innerHTML = "";
-
   snapshot.forEach(doc => {
-    const data = doc.data();
-    docMap.set(doc.id, { data, id: doc.id });
-    if (!nicknameSet.has(data.name)) {
-      nicknameSet.add(data.name);
-      const div = document.createElement("div");
-      div.textContent = data.name;
-      communityContainer.appendChild(div);
-    }
+    docMap.set(doc.id, { data: doc.data(), id: doc.id });
   });
 
   const rendered = new Set();
-
   function renderRecursive(afterId) {
     for (const [id, entry] of docMap.entries()) {
       if (entry.data.afterId === afterId && !rendered.has(id)) {
@@ -297,13 +283,11 @@ function extractKeywords() {
   const words = text.match(/\w+|[가-힣]{2,}/g) || [];
   const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
   const filtered = words.filter(w => !stopwords.includes(w));
-
   if (filtered.length === 0) {
     animateKeyword("");
     clearHighlights();
     return;
   }
-
   const shuffled = filtered.sort(() => 0.5 - Math.random());
   const sample = shuffled.slice(0, 3);
   animateKeyword(sample.join(" "));
@@ -314,15 +298,12 @@ function highlightKeywords(keywords) {
   clearHighlights();
   const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
   const nodesToReplace = [];
-
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
     if (parent.nodeName === "MARK") continue;
-
     let replaced = node.textContent;
     let matched = false;
-
     keywords.forEach(word => {
       const regex = new RegExp(`(${word})`, "g");
       if (regex.test(replaced)) {
@@ -330,14 +311,12 @@ function highlightKeywords(keywords) {
         replaced = replaced.replace(regex, `<mark class=\"keyword-highlight\">$1</mark>`);
       }
     });
-
     if (matched) {
       const span = document.createElement("span");
       span.innerHTML = replaced;
       nodesToReplace.push({ oldNode: node, newNode: span });
     }
   }
-
   nodesToReplace.forEach(({ oldNode, newNode }) => {
     oldNode.parentNode.replaceChild(newNode, oldNode);
   });
@@ -355,7 +334,6 @@ function animateKeyword(text) {
     keywordBox.textContent = " ";
     return;
   }
-
   const words = text.split(" ");
   words.forEach((word, i) => {
     [...word].forEach(char => {
@@ -365,7 +343,6 @@ function animateKeyword(text) {
       span.style.animationDelay = `${Math.random()}s`;
       keywordBox.appendChild(span);
     });
-
     if (i < words.length - 1) {
       const spacer = document.createElement("span");
       spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
