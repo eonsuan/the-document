@@ -129,8 +129,21 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBdv0FHFtBHUL9VWDRtvU1FXN8rAVwYgjo",
@@ -143,30 +156,62 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
 const db = getFirestore(app);
 const storage = getStorage(app);
-const entriesRef = collection(db, "doc");
+const entries = collection(db, "doc");
 
 const submitButton = document.getElementById("submit-entry");
 const nameInput = document.getElementById("name-input");
 const messageInput = document.getElementById("message-input");
 const imageInput = document.getElementById("image-input");
 const documentDiv = document.getElementById("document");
+const communityContainer = document.getElementById("community-list-container");
 const keywordBox = document.getElementById("keyword-box");
 
-let selectedInsertTargetId = null;
-let nicknameSet = new Set();
+let selectedInsertTarget = null;
+let keywordIntervalStarted = false;
 
-function createEntryElement(data) {
+const singleEntry = document.createElement("span");
+singleEntry.className = "entry";
+singleEntry.dataset.nickname = "shared";
+documentDiv.appendChild(singleEntry);
+
+const nicknameSet = new Set();
+const nicknameList = document.createElement("div");
+nicknameList.style.padding = "10px";
+nicknameList.style.margin = "0";
+nicknameList.style.listStyle = "none";
+nicknameList.style.fontSize = "1.1rem";
+nicknameList.style.display = "flex";
+nicknameList.style.flexDirection = "column";
+communityContainer.innerHTML = "";
+communityContainer.appendChild(nicknameList);
+
+function renderEntry(data) {
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
-  entryWrapper.dataset.id = data.id;
   entryWrapper.dataset.nickname = data.name;
 
-  const textSpan = document.createElement("span");
-  textSpan.className = "entry-text";
-  if (data.message) textSpan.textContent = data.message + " ";
-  entryWrapper.appendChild(textSpan);
+  const insertBtn = document.createElement("button");
+  insertBtn.textContent = "+";
+  insertBtn.className = "insert-button";
+
+  insertBtn.addEventListener("click", () => {
+    if (selectedInsertTarget) {
+      selectedInsertTarget.classList.remove("insert-target");
+    }
+    selectedInsertTarget = entryWrapper;
+    entryWrapper.classList.add("insert-target");
+  });
+
+  if (data.message) {
+    const textSpan = document.createElement("span");
+    textSpan.className = "entry-text";
+    textSpan.textContent = data.message + " ";
+    entryWrapper.appendChild(textSpan);
+  }
 
   if (data.imageUrl) {
     const img = document.createElement("img");
@@ -175,52 +220,15 @@ function createEntryElement(data) {
     entryWrapper.appendChild(img);
   }
 
-  const insertBtn = document.createElement("button");
-  insertBtn.textContent = "+";
-  insertBtn.className = "insert-button";
-  insertBtn.addEventListener("click", () => {
-    document.querySelectorAll(".insert-button").forEach(btn => btn.classList.remove("insert-target"));
-    insertBtn.classList.add("insert-target");
-    selectedInsertTargetId = data.id;
-  });
   entryWrapper.appendChild(insertBtn);
+  singleEntry.appendChild(entryWrapper);
 
-  return entryWrapper;
-}
-
-async function renderAll(snapshot) {
-  documentDiv.innerHTML = "";
-  const elements = [];
-
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    data.id = doc.id;
-    elements.push(data);
-  });
-
-  // 순서대로 렌더링 (afterId 기반)
-  const map = new Map(elements.map(e => [e.id, e]));
-  const ordered = [];
-  const visited = new Set();
-
-  // 처음부터 순서 정렬
-  while (ordered.length < elements.length) {
-    for (let el of elements) {
-      if (visited.has(el.id)) continue;
-      if (!el.afterId || ordered.some(e => e.id === el.afterId)) {
-        const idx = el.afterId ? ordered.findIndex(e => e.id === el.afterId) + 1 : ordered.length;
-        ordered.splice(idx, 0, el);
-        visited.add(el.id);
-      }
-    }
+  if (!nicknameSet.has(data.name)) {
+    nicknameSet.add(data.name);
+    const div = document.createElement("div");
+    div.textContent = data.name;
+    nicknameList.appendChild(div);
   }
-
-  for (let el of ordered) {
-    const entryEl = createEntryElement(el);
-    documentDiv.appendChild(entryEl);
-  }
-
-  updateKeywords();
 }
 
 submitButton.addEventListener("click", async () => {
@@ -237,60 +245,51 @@ submitButton.addEventListener("click", async () => {
     imageUrl = await getDownloadURL(snapshot.ref);
   }
 
-  const docRef = await addDoc(entriesRef, {
+  await addDoc(entries, {
     name,
     message,
     imageUrl,
-    timestamp: Date.now(),
-    afterId: selectedInsertTargetId || null
+    timestamp: Date.now()
   });
 
-  // 초기화
   nameInput.value = "";
   messageInput.value = "";
   imageInput.value = "";
-  selectedInsertTargetId = null;
 });
 
-const q = query(entriesRef, orderBy("timestamp"));
-onSnapshot(q, renderAll);
+const q = query(entries, orderBy("timestamp"));
+onSnapshot(q, (snapshot) => {
+  singleEntry.innerHTML = "";
+  snapshot.forEach(doc => renderEntry(doc.data()));
+  extractKeywords();
 
-// ----------------- 키워드 -----------------
-function updateKeywords() {
-  const text = documentDiv.textContent;
-  const words = text.match(/[\w가-힣]{2,}/g) || [];
+  if (!keywordIntervalStarted) {
+    keywordIntervalStarted = true;
+    setInterval(extractKeywords, 10000);
+  }
+});
+
+function extractKeywords() {
+  const text = singleEntry.textContent;
+  const words = text.match(/\w+|[가-힣]{2,}/g) || [];
   const stopwords = ['그리고', '하지만', '있다', '입니다', '있는', '하는', '그', '이', '저', '것', '에서'];
   const filtered = words.filter(w => !stopwords.includes(w));
-  const sample = filtered.sort(() => 0.5 - Math.random()).slice(0, 3);
 
-  displayKeywords(sample);
+  if (filtered.length === 0) {
+    animateKeyword("");
+    clearHighlights();
+    return;
+  }
+
+  const shuffled = filtered.sort(() => 0.5 - Math.random());
+  const sample = shuffled.slice(0, 3);
+  animateKeyword(sample.join(" "));
   highlightKeywords(sample);
 }
 
-function displayKeywords(words) {
-  keywordBox.innerHTML = "";
-  words.forEach((word, i) => {
-    [...word].forEach(char => {
-      const span = document.createElement("span");
-      span.className = "floating-char";
-      span.textContent = char;
-      span.style.animationDelay = `${Math.random()}s`;
-      keywordBox.appendChild(span);
-    });
-    if (i < words.length - 1) {
-      const spacer = document.createElement("span");
-      spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
-      keywordBox.appendChild(spacer);
-    }
-  });
-}
-
 function highlightKeywords(keywords) {
-  document.querySelectorAll(".keyword-highlight").forEach(el => {
-    el.outerHTML = el.innerText;
-  });
-
-  const walker = document.createTreeWalker(documentDiv, NodeFilter.SHOW_TEXT);
+  clearHighlights();
+  const walker = document.createTreeWalker(singleEntry, NodeFilter.SHOW_TEXT);
   const nodesToReplace = [];
 
   while (walker.nextNode()) {
@@ -305,7 +304,7 @@ function highlightKeywords(keywords) {
       const regex = new RegExp(`(${word})`, "g");
       if (regex.test(replaced)) {
         matched = true;
-        replaced = replaced.replace(regex, `<mark class="keyword-highlight">$1</mark>`);
+        replaced = replaced.replace(regex, `<mark class=\"keyword-highlight\">$1</mark>`);
       }
     });
 
@@ -320,8 +319,38 @@ function highlightKeywords(keywords) {
     oldNode.parentNode.replaceChild(newNode, oldNode);
   });
 }
-</script>
 
+function clearHighlights() {
+  document.querySelectorAll(".keyword-highlight").forEach(el => {
+    el.outerHTML = el.innerText;
+  });
+}
+
+function animateKeyword(text) {
+  keywordBox.innerHTML = "";
+  if (!text.trim()) {
+    keywordBox.textContent = " ";
+    return;
+  }
+
+  const words = text.split(" ");
+  words.forEach((word, i) => {
+    [...word].forEach(char => {
+      const span = document.createElement("span");
+      span.className = "floating-char";
+      span.textContent = char;
+      span.style.animationDelay = `${Math.random()}s`;
+      keywordBox.appendChild(span);
+    });
+
+    if (i < words.length - 1) {
+      const spacer = document.createElement("span");
+      spacer.innerHTML = "&nbsp;&nbsp;&nbsp;";
+      keywordBox.appendChild(spacer);
+    }
+  });
+}
+</script
 
 </body>
 </html>
