@@ -127,8 +127,9 @@
 
 <!-- 데이터연동 -->
 
-// ✅ 개선된 중복 방지 및 실시간 위치 삽입 유지 버전
-<script type="module">
+ㅋㅋㅋ
+  // Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
+  <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -151,7 +152,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-getAnalytics(app);
+const analytics = getAnalytics(app);
 const db = getFirestore(app);
 const entries = collection(db, "doc");
 
@@ -165,43 +166,46 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
-const nicknameSet = new Set();
+let tempQueue = []; // 전체 리스트 캐시
 
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
+singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
 
-function renderEntry(data, id) {
-  const wrapper = document.createElement("span");
-  wrapper.className = "entry";
-  wrapper.dataset.nickname = data.name;
-  wrapper.dataset.id = id;
+const nicknameSet = new Set();
+
+function renderEntry(docData, docId) {
+  const entryWrapper = document.createElement("span");
+  entryWrapper.className = "entry";
+  entryWrapper.dataset.nickname = docData.name;
+  entryWrapper.dataset.id = docId;
 
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
   insertBtn.addEventListener("click", () => {
-    selectedInsertTargetId = id;
+    selectedInsertTargetId = docId;
     document.querySelectorAll(".insert-target").forEach(el => el.classList.remove("insert-target"));
-    wrapper.classList.add("insert-target");
+    entryWrapper.classList.add("insert-target");
   });
 
-  if (data.message) {
-    const span = document.createElement("span");
-    span.className = "entry-text";
-    span.textContent = data.message + " ";
-    wrapper.appendChild(span);
+  if (docData.message) {
+    const textSpan = document.createElement("span");
+    textSpan.className = "entry-text";
+    textSpan.textContent = docData.message + " ";
+    entryWrapper.appendChild(textSpan);
   }
 
-  if (data.imageData) {
+  if (docData.imageData) {
     const img = document.createElement("img");
-    img.src = data.imageData;
+    img.src = docData.imageData;
     img.className = "inline-img";
-    wrapper.appendChild(img);
+    entryWrapper.appendChild(img);
   }
 
-  wrapper.appendChild(insertBtn);
-  return wrapper;
+  entryWrapper.appendChild(insertBtn);
+  return entryWrapper;
 }
 
 submitButton.addEventListener("click", async () => {
@@ -213,7 +217,7 @@ submitButton.addEventListener("click", async () => {
   const afterId = selectedInsertTargetId;
   selectedInsertTargetId = null;
 
-  const entryData = {
+  const newDoc = {
     name,
     message,
     imageData: "",
@@ -222,8 +226,10 @@ submitButton.addEventListener("click", async () => {
   };
 
   const saveEntry = async (imageData = "") => {
-    entryData.imageData = imageData;
-    await addDoc(entries, entryData);
+    newDoc.imageData = imageData;
+    const docRef = await addDoc(entries, newDoc);
+    tempQueue.push({ ...newDoc, id: docRef.id });
+    renderFromQueue();
   };
 
   if (file) {
@@ -241,21 +247,27 @@ submitButton.addEventListener("click", async () => {
 
 const q = query(entries, orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
-  const docMap = new Map();
-  snapshot.forEach(doc => {
-    docMap.set(doc.id, { ...doc.data(), id: doc.id });
-  });
+  tempQueue = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+  renderFromQueue();
+});
 
+function renderFromQueue() {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
 
+  const docMap = new Map();
+  tempQueue.forEach(doc => {
+    docMap.set(doc.id, doc);
+  });
+
   const rendered = new Set();
-  function renderRecursive(afterId) {
+
+  const renderRecursive = (afterId) => {
     for (const [id, doc] of docMap) {
       if (doc.afterId === afterId && !rendered.has(id)) {
         const entry = renderEntry(doc, id);
-        const target = [...singleEntry.children].find(c => c.dataset.id === afterId);
+        const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
         if (target && target.nextSibling) {
           singleEntry.insertBefore(entry, target.nextSibling);
         } else if (target) {
@@ -275,16 +287,15 @@ onSnapshot(q, (snapshot) => {
         renderRecursive(id);
       }
     }
-  }
+  };
 
   renderRecursive(null);
   extractKeywords();
-
   if (!keywordIntervalStarted) {
     keywordIntervalStarted = true;
     setInterval(extractKeywords, 10000);
   }
-});
+}
 
 function extractKeywords() {
   const text = singleEntry.textContent;
@@ -360,8 +371,7 @@ function animateKeyword(text) {
     }
   });
 }
-</script>
-
+  </script>
 
 
 </body>
