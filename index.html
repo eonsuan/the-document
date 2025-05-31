@@ -127,10 +127,14 @@
 
 <!-- 데이터연동 -->
 
-<script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot, query, orderBy
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+import {
+  getStorage, ref, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-storage.js";
 
 // Firebase 설정
 const firebaseConfig = {
@@ -139,69 +143,92 @@ const firebaseConfig = {
   projectId: "the-document-94955",
   storageBucket: "the-document-94955.appspot.com",
   messagingSenderId: "502838993401",
-  appId: "1:502838993401:web:169c018782a315b05a5d28"
+  appId: "1:502838993401:web:169c018782a315b05a5d28",
+  measurementId: "G-H8CMBQBWXD"
 };
 
 const app = initializeApp(firebaseConfig);
+getAnalytics(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const entries = collection(db, "doc");
 
-const submitButton = document.getElementById("submit-entry");
 const nameInput = document.getElementById("name-input");
 const messageInput = document.getElementById("message-input");
 const imageInput = document.getElementById("image-input");
+const submitButton = document.getElementById("submit-entry");
 const documentDiv = document.getElementById("document");
+const keywordBox = document.getElementById("keyword-box");
+const communityListContainer = document.getElementById("community-list-container");
 
-let selectedInsertTarget = null;
+const nicknameSet = new Set();
+const nicknameList = document.createElement("ul");
+Object.assign(nicknameList.style, {
+  padding: "10px", margin: "0", listStyle: "none", fontSize: "1.1rem"
+});
+communityListContainer.innerHTML = "";
+communityListContainer.appendChild(nicknameList);
 
-// 고유 ID 생성기
-function generateUUID() {
-  return crypto.randomUUID();
+let selectedInsertIndex = null;
+
+// 🔁 문서 로딩 시 기존 내용 불러오기
+onSnapshot(query(entries, orderBy("timestamp")), (snapshot) => {
+  const dataList = [];
+  snapshot.forEach(doc => dataList.push({ id: doc.id, ...doc.data() }));
+  dataList.sort((a, b) => a.index - b.index);
+  renderDocument(dataList);
+  updateKeywords(dataList);
+});
+
+function renderDocument(dataList) {
+  documentDiv.innerHTML = "";
+  dataList.forEach((data, idx) => {
+    const entryWrapper = createEntryElement(data.name, data.message, data.imageUrl, idx);
+    documentDiv.appendChild(entryWrapper);
+  });
 }
 
-// 데이터 렌더링
-function renderEntry(data) {
-  const entryWrapper = document.createElement("span");
-  entryWrapper.className = "entry";
-  entryWrapper.dataset.id = data.id;
+function createEntryElement(name, message, imageUrl, index) {
+  const wrapper = document.createElement("span");
+  wrapper.className = "entry";
+  wrapper.dataset.nickname = name;
 
   const insertBtn = document.createElement("button");
   insertBtn.textContent = "+";
   insertBtn.className = "insert-button";
   insertBtn.addEventListener("click", () => {
-    if (selectedInsertTarget) selectedInsertTarget.classList.remove("insert-target");
-    selectedInsertTarget = entryWrapper;
-    entryWrapper.classList.add("insert-target");
+    document.querySelectorAll(".insert-button").forEach(btn => btn.classList.remove("insert-target"));
+    selectedInsertIndex = index;
+    insertBtn.classList.add("insert-target");
   });
 
-  if (data.message) {
+  if (message) {
     const textSpan = document.createElement("span");
     textSpan.className = "entry-text";
-    textSpan.textContent = data.message + " ";
-    entryWrapper.appendChild(textSpan);
+    textSpan.textContent = message + " ";
+    wrapper.appendChild(textSpan);
   }
 
-  if (data.imageUrl) {
+  if (imageUrl) {
     const img = document.createElement("img");
-    img.src = data.imageUrl;
+    img.src = imageUrl;
     img.className = "inline-img";
-    entryWrapper.appendChild(img);
+    wrapper.appendChild(img);
   }
 
-  entryWrapper.appendChild(insertBtn);
+  wrapper.appendChild(insertBtn);
 
-  if (data.afterId) {
-    const target = document.querySelector(`[data-id='${data.afterId}']`);
-    if (target) {
-      documentDiv.insertBefore(entryWrapper, target.nextSibling);
-      return;
-    }
+  if (!nicknameSet.has(name)) {
+    nicknameSet.add(name);
+    const li = document.createElement("li");
+    li.textContent = name;
+    nicknameList.appendChild(li);
   }
-  documentDiv.appendChild(entryWrapper);
+
+  return wrapper;
 }
 
-// 제출
+// 🔼 제출
 submitButton.addEventListener("click", async () => {
   const name = nameInput.value.trim();
   const message = messageInput.value.trim();
@@ -215,47 +242,88 @@ submitButton.addEventListener("click", async () => {
     imageUrl = await getDownloadURL(snapshot.ref);
   }
 
-  const newId = generateUUID();
-  const afterId = selectedInsertTarget ? selectedInsertTarget.dataset.id : null;
+  const allEntries = document.querySelectorAll(".entry");
+  const newIndex = selectedInsertIndex !== null ? selectedInsertIndex + 0.1 : allEntries.length;
 
   await addDoc(entries, {
-    id: newId,
     name,
     message,
     imageUrl,
-    afterId,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    index: newIndex
   });
 
+  selectedInsertIndex = null;
   nameInput.value = "";
   messageInput.value = "";
   imageInput.value = "";
-  selectedInsertTarget = null;
 });
 
-// 전체 데이터 불러오기
-const q = query(entries, orderBy("timestamp"));
-onSnapshot(q, (snapshot) => {
-  documentDiv.innerHTML = "";
-  const docs = [];
-  snapshot.forEach(doc => docs.push(doc.data()));
+function updateKeywords(dataList) {
+  const fullText = dataList.map(d => d.message).join(" ");
+  const words = fullText.match(/[\w가-힣]{2,}/g) || [];
+  const stopwords = ['그리고','하지만','있다','입니다','있는','하는','그','이','저','것','에서'];
+  const filtered = words.filter(w => !stopwords.includes(w));
+  const shuffled = filtered.sort(() => 0.5 - Math.random());
+  const sample = shuffled.slice(0, 3);
+  animateKeyword(sample.join(" "));
+  highlightKeywords(sample);
+}
 
-  const rendered = new Set();
-  const renderNext = () => {
-    const remaining = docs.filter(d => !rendered.has(d.id));
-    if (remaining.length === 0) return;
-
-    for (const doc of remaining) {
-      if (!doc.afterId || rendered.has(doc.afterId)) {
-        renderEntry(doc);
-        rendered.add(doc.id);
-      }
+function animateKeyword(text) {
+  keywordBox.innerHTML = "";
+  if (!text.trim()) return;
+  const words = text.split(" ");
+  words.forEach((word, i) => {
+    [...word].forEach(char => {
+      const span = document.createElement("span");
+      span.className = "floating-char";
+      span.textContent = char;
+      span.style.animationDelay = `${Math.random()}s`;
+      keywordBox.appendChild(span);
+    });
+    if (i < words.length - 1) {
+      const space = document.createElement("span");
+      space.innerHTML = "&nbsp;&nbsp;&nbsp;";
+      keywordBox.appendChild(space);
     }
-    setTimeout(renderNext, 20);
-  };
-  renderNext();
-});
-</script>
+  });
+}
+
+function highlightKeywords(keywords) {
+  document.querySelectorAll(".keyword-highlight").forEach(el => {
+    el.outerHTML = el.innerText;
+  });
+
+  const walker = document.createTreeWalker(documentDiv, NodeFilter.SHOW_TEXT);
+  const toReplace = [];
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const parent = node.parentNode;
+    if (parent.nodeName === "MARK") continue;
+    let replaced = node.textContent;
+    let matched = false;
+
+    keywords.forEach(word => {
+      const regex = new RegExp(`(${word})`, "g");
+      if (regex.test(replaced)) {
+        matched = true;
+        replaced = replaced.replace(regex, `<mark class="keyword-highlight">$1</mark>`);
+      }
+    });
+
+    if (matched) {
+      const span = document.createElement("span");
+      span.innerHTML = replaced;
+      toReplace.push({ oldNode: node, newNode: span });
+    }
+  }
+
+  toReplace.forEach(({ oldNode, newNode }) => {
+    oldNode.parentNode.replaceChild(newNode, oldNode);
+  });
+}
 
 </body>
 </html>
