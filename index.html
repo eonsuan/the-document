@@ -127,10 +127,8 @@
 
 <!-- 데이터연동 -->
 
-쑤러질ㄷ스
-
-// Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
-<script type="module">
+ㅈㅂ
+  <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
 import {
@@ -225,6 +223,7 @@ submitButton.addEventListener("click", async () => {
       afterId: afterId || null,
       timestamp: Date.now()
     });
+    // 👉 DOM 조작하지 않음! 오직 onSnapshot에서만 그리게!
     nameInput.value = "";
     messageInput.value = "";
     imageInput.value = "";
@@ -235,9 +234,7 @@ submitButton.addEventListener("click", async () => {
     reader.onloadend = () => saveEntry(reader.result);
     reader.readAsDataURL(file);
   } else {
-    setTimeout(async () => {
-      await saveEntry();
-    }, 0);
+    await saveEntry();
   }
 });
 
@@ -253,6 +250,7 @@ onSnapshot(q, (snapshot) => {
   });
 
   const rendered = new Set();
+
   const renderRecursive = (afterId) => {
     for (const [id, doc] of docMap) {
       if (doc.afterId === afterId && !rendered.has(id)) {
