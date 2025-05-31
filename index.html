@@ -127,8 +127,9 @@
 
 <!-- 데이터연동 -->
 
-마지막
-  
+쑤러질ㄷ스
+
+// Firebase 모듈 기반 문단 삽입 위치 지정 및 실시간 반영 스크립트
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-analytics.js";
@@ -138,9 +139,7 @@ import {
   addDoc,
   onSnapshot,
   query,
-  orderBy,
-  doc,
-  setDoc
+  orderBy
 } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -168,15 +167,15 @@ const communityList = document.getElementById("community-list-container");
 
 let selectedInsertTargetId = null;
 let keywordIntervalStarted = false;
+
 const singleEntry = document.createElement("span");
 singleEntry.className = "entry";
 singleEntry.dataset.nickname = "shared";
 documentDiv.appendChild(singleEntry);
+
 const nicknameSet = new Set();
 
 function renderEntry(docData, docId) {
-  if (singleEntry.querySelector(`[data-id='${docId}']`)) return; // 중복 방지 모든 항목에 적용
-
   const entryWrapper = document.createElement("span");
   entryWrapper.className = "entry";
   entryWrapper.dataset.nickname = docData.name;
@@ -197,6 +196,7 @@ function renderEntry(docData, docId) {
     textSpan.textContent = docData.message + " ";
     entryWrapper.appendChild(textSpan);
   }
+
   if (docData.imageData) {
     const img = document.createElement("img");
     img.src = docData.imageData;
@@ -217,33 +217,28 @@ submitButton.addEventListener("click", async () => {
   const afterId = selectedInsertTargetId;
   selectedInsertTargetId = null;
 
-  const entryData = {
-    name,
-    message,
-    imageData: "",
-    afterId: afterId || null,
-    timestamp: Date.now()
-  };
-
-  const saveEntry = async (data) => {
-    const newDoc = doc(entries);
-    await setDoc(newDoc, data);
+  const saveEntry = async (imageData = "") => {
+    await addDoc(entries, {
+      name,
+      message,
+      imageData,
+      afterId: afterId || null,
+      timestamp: Date.now()
+    });
+    nameInput.value = "";
+    messageInput.value = "";
+    imageInput.value = "";
   };
 
   if (file) {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      entryData.imageData = reader.result;
-      saveEntry(entryData);
-    };
+    reader.onloadend = () => saveEntry(reader.result);
     reader.readAsDataURL(file);
   } else {
-    await saveEntry(entryData);
+    setTimeout(async () => {
+      await saveEntry();
+    }, 0);
   }
-
-  nameInput.value = "";
-  messageInput.value = "";
-  imageInput.value = "";
 });
 
 const q = query(entries, orderBy("timestamp"));
@@ -251,15 +246,15 @@ onSnapshot(q, (snapshot) => {
   singleEntry.innerHTML = "";
   communityList.innerHTML = "";
   nicknameSet.clear();
-  const docMap = new Map();
 
+  const docMap = new Map();
   snapshot.forEach(doc => {
     docMap.set(doc.id, { ...doc.data(), id: doc.id });
   });
 
   const rendered = new Set();
   const renderRecursive = (afterId) => {
-    for (const [id, doc] of docMap.entries()) {
+    for (const [id, doc] of docMap) {
       if (doc.afterId === afterId && !rendered.has(id)) {
         const entry = renderEntry(doc, id);
         const target = [...singleEntry.children].find(child => child.dataset.id === afterId);
@@ -286,6 +281,7 @@ onSnapshot(q, (snapshot) => {
 
   renderRecursive(null);
   extractKeywords();
+
   if (!keywordIntervalStarted) {
     keywordIntervalStarted = true;
     setInterval(extractKeywords, 10000);
@@ -316,6 +312,7 @@ function highlightKeywords(keywords) {
     const node = walker.currentNode;
     const parent = node.parentNode;
     if (parent.nodeName === "MARK") continue;
+
     let replaced = node.textContent;
     let matched = false;
     keywords.forEach(word => {
@@ -325,6 +322,7 @@ function highlightKeywords(keywords) {
         replaced = replaced.replace(regex, `<mark class=\"keyword-highlight\">$1</mark>`);
       }
     });
+
     if (matched) {
       const span = document.createElement("span");
       span.innerHTML = replaced;
@@ -365,6 +363,7 @@ function animateKeyword(text) {
   });
 }
 </script>
+
 
 </body>
 </html>
